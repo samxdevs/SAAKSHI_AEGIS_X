@@ -72,7 +72,16 @@
   const displayName = (n) => n.name || n.node;
 
   // ---------------------------------------------------------------- API
+  // Online (Netlify + Supabase) the same calls go to cloud.js; on the Mac, to saakshi_dashboard.py.
+  const CLOUD = window.SaakshiCloud || null;
   async function api(path, body) {
+    if (CLOUD) {
+      try { return await CLOUD.api(path, body); }
+      catch (e) {
+        if (e.status === 401 && path !== "/api/login") { me = null; showAuth(); throw new Error("log in"); }
+        throw e;
+      }
+    }
     const opts = body === undefined ? {} : {
       method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "saakshi" },
       body: JSON.stringify(body) };
@@ -94,8 +103,11 @@
       label, count ? h("span", { class: "count", text: count, "aria-label": `${count} open` }) : null));
     add("nodes", "Nodes");
     add("alerts", "Alerts", openAlerts);
-    if (me && me.role === "admin") { add("requests", "Requests", newOrders); add("team", "Team"); }
+    if (canSeeRequests()) add("requests", "Requests", newOrders);
+    if (me && me.role === "admin") add("team", "Team");
   }
+  // On the Mac the admin handles node requests; online, only AEGIS_X staff see them (not every customer's admin).
+  const canSeeRequests = () => !!me && (CLOUD ? !!me.staff : me.role === "admin");
 
   function showShell() {
     document.getElementById("top").hidden = false;
@@ -122,7 +134,8 @@
       mode === "signup" ? field("name", "Your name", "text", "name") : null,
       field("email", "Email", "email", "email"),
       field("password", "Password", "password", mode === "signup" ? "new-password" : "current-password"),
-      mode === "signup" && !first ? field("invite", "Invite code (from your admin, under Team)", "text", "off") : null,
+      mode === "signup" && !first ? field("invite", CLOUD ? "Invite code from your team (leave empty to start your own organisation)"
+        : "Invite code (from your admin, under Team)", "text", "off") : null,
       needsCode ? field("invite", "Setup code (printed in the server's log when it started)", "text", "off") : null,
       err,
       h("button", { class: "btn primary", type: "submit", text: mode === "signup" ? "Create account" : "Log in" }));
@@ -158,7 +171,7 @@
     try {
       if (parts[0] === "node" && parts[1]) await viewNode(decodeURIComponent(parts[1]), parts[2] && decodeURIComponent(parts[2]));
       else if (parts[0] === "alerts") await viewAlerts();
-      else if (parts[0] === "requests" && me.role === "admin") await viewRequests();
+      else if (parts[0] === "requests" && canSeeRequests()) await viewRequests();
       else if (parts[0] === "team" && me.role === "admin") await viewTeam();
       else await viewNodes();
     } catch (e) {
@@ -185,14 +198,38 @@
     me = r.user;
     if (!me) return showAuth();
     showShell();
+    if (CLOUD && !me.org) return viewOnboard();
     await render();
     startPolling();
+  }
+
+  // Online only: an account belongs to one organisation. A new account starts one or joins one.
+  function viewOnboard() {
+    clearInterval(timer);
+    document.getElementById("tabs").replaceChildren();
+    const card = (title, sub, label, k, value, button, path) => {
+      const err = h("p", { class: "err", role: "alert" });
+      const input = h("input", { type: "text", name: k, value: value || "", maxlength: 80, required: true, autocomplete: "off" });
+      const form = h("form", { novalidate: true }, h("label", {}, label, input), err,
+        h("button", { class: "btn primary", type: "submit", text: button }));
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault(); err.textContent = "";
+        try { await api(path, { [k]: input.value }); await boot(); } catch (x) { err.textContent = x.message; }
+      });
+      return h("section", { class: "card panel" }, h("h2", { text: title }), h("p", { class: "muted", text: sub }), form);
+    };
+    $view.replaceChildren(pageHead("Welcome to SAAKSHI", "Your account isn't part of an organisation yet."),
+      h("div", { class: "onboard" },
+        card("Start an organisation", "For an exporter or farm group with its own nodes. You become its admin.",
+          "Organisation name", "name", "", "Start organisation", "/api/org/create"),
+        card("Join your team", "Your admin finds the code on their Team page.",
+          "Invite code", "invite", "", "Join", "/api/org/join")));
   }
 
   // ---------------------------------------------------------------- shared bits
   async function getOverview() {
     lastOverview = await api("/api/overview");
-    const newOrders = me.role === "admin" ? (await api("/api/orders")).orders.filter((o) => o.status === "new").length : 0;
+    const newOrders = canSeeRequests() ? (await api("/api/orders")).orders.filter((o) => o.status === "new").length : 0;
     setTabs(lastOverview.openAlerts, newOrders);
     return lastOverview;
   }
@@ -223,6 +260,17 @@
     if (!o.crypto) out.push(h("div", { class: "banner info" }, icon("info"), h("div", {},
       "Chip signatures were checked by the ledger but aren't re-checked here. To re-check them on this Mac too, run ",
       h("code", { class: "mono", text: "python3 -m pip install cryptography" }), " and restart the dashboard.")));
+    if (o.cloud && o.syncedAt && o.now - o.syncedAt > 180) out.push(h("div", { class: "banner warning" }, icon("warning"), h("div", {},
+      h("b", { text: `Last update from the Mac ${ago(o.syncedAt, o.now)}. ` }),
+      "What you see is as of then. On the Mac that runs the ledger, start ",
+      h("code", { class: "mono", text: "python3 saakshi_cloud_sync.py" }), " for live data.")));
+    if (!o.nodes.length && o.cloud) {
+      out.push(h("div", { class: "card empty" }, h("h2", { text: "No nodes here yet" }),
+        h("p", {}, me.role === "admin" ? "Connect the Mac that runs the ledger: open " : "Ask your admin to connect the Mac that runs the ledger (Team → Connect this Mac).",
+          me.role === "admin" ? h("a", { href: "#/team", text: "Team → Connect this Mac" }) : null,
+          me.role === "admin" ? ". Its nodes appear here within a minute." : "")));
+      return $view.replaceChildren(...out);
+    }
     if (!o.nodes.length) {
       out.push(h("div", { class: "card empty" }, h("h2", { text: "No records yet" }),
         h("p", {}, "The dashboard reads the ledger's folder (saakshi_ledger/). Start the ledger with ",
@@ -458,6 +506,18 @@
           h("span", { text: "biggest knock in each step" }))),
         st.mpuMissing ? h("p", { class: "muted", text: "The motion sensor (MPU-6050) isn't answering on this node, so there's no jolt data. Check its wiring (address 0x69, AD0 to 3V3)." })
           : joltChart(v.series)));
+    const csv = h("a", { class: "btn small", href: `/api/export?node=${encodeURIComponent(nodeId)}&chain=${chain}`, text: "Download CSV" });
+    if (CLOUD) csv.addEventListener("click", async (e) => {
+      e.preventDefault();
+      csv.textContent = "Preparing…";
+      try {
+        const url = URL.createObjectURL(new Blob([await CLOUD.exportCsv(nodeId, chain)], { type: "text/csv" }));
+        const a = h("a", { href: url, download: `${nodeId}_${chain}.csv` });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        csv.textContent = "Download CSV";
+      } catch (x) { csv.textContent = "Download failed, try again"; }
+    });
     const lower = h("div", { class: "lower" },
       alertsCard(v.alerts.filter((a) => !a.acked), "Alerts on this trip", true),
       recentCard(v.recent));
@@ -468,8 +528,7 @@
       h("div", { class: "titlebar" }, h("h1", { text: displayName(n) }), stateBadge(n.status)),
       h("p", { class: "muted" }, n.name ? `${n.node} · ` : "", `Last heard ${ago(n.status.lastHeard, o.now)}`,
         n.status.interval ? ` · logs every ${dur(n.status.interval)}` : ""),
-      h("div", { class: "filters" }, h("label", {}, "Trip", tripSel),
-        h("a", { class: "btn small", href: `/api/export?node=${encodeURIComponent(nodeId)}&chain=${chain}`, text: "Download CSV" })),
+      h("div", { class: "filters" }, h("label", {}, "Trip", tripSel), csv),
       kpis,
       h("div", { class: "layout" }, main, side, lower));
   }
@@ -502,7 +561,8 @@
       h("a", { href: `${o.polygon.explorer}/address/${o.polygon.contract}`, target: "_blank", rel: "noopener", text: "SaakshiRegistry contract" }),
       o.polygon.checkedAt ? ` · checked ${ago(o.polygon.checkedAt, o.now)}` : "");
     return h("section", { class: "card panel" }, h("h2", { text: "Integrity" }), ...rows, links,
-      h("div", { style: "margin-top:10px" }, refresh));
+      CLOUD ? h("p", { class: "muted", style: "font-size:13px;margin:8px 0 0", text: "The Mac checks Polygon every 5 minutes while it syncs." })
+        : h("div", { style: "margin-top:10px" }, refresh));
   }
 
   function shareCard(v) {
@@ -511,7 +571,8 @@
     if (!sh.url) {
       body.push(h("p", { class: "muted" }, sh.hint || "No buyer link yet."));
     } else {
-      const img = h("img", { src: `/api/qr?node=${encodeURIComponent(v.node)}&chain=${v.chain}`, alt: "QR code for the buyer's verification page", width: 190, height: 190 });
+      const img = h("img", { src: sh.qrSvg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sh.qrSvg)}`
+        : `/api/qr?node=${encodeURIComponent(v.node)}&chain=${v.chain}`, alt: "QR code for the buyer's verification page", width: 190, height: 190 });
       const fallback = h("p", { class: "muted", hidden: true }, "For the QR image here, run ",
         h("code", { class: "mono", text: 'python3 -m pip install "qrcode"' }), " and restart.");
       img.addEventListener("error", () => { img.hidden = true; fallback.hidden = false; });
@@ -524,7 +585,9 @@
       body.push(h("div", { class: "qr" }, img, fallback, h("div", { class: "link", text: sh.url }), copy));
       const p = sh.published;
       if (!p) body.push(h("p", { class: "muted", style: "font-size:13px" }, "This trip isn't on the verification site yet. Run ",
-        h("code", { class: "mono", text: "python3 saakshi_relay.py --publish" }), " and upload saakshi_site to Netlify."));
+        h("code", { class: "mono", text: "python3 saakshi_relay.py --publish" }),
+        CLOUD ? " on the Mac, then " : " and upload saakshi_site to Netlify.",
+        CLOUD ? h("code", { class: "mono", text: "bash saakshi_cloud/deploy.sh" }) : null, CLOUD ? "." : null));
       else if (p.count < v.integrity.records) body.push(h("p", { class: "muted", style: "font-size:13px" },
         `The site has ${p.count.toLocaleString("en-IN")} of ${v.integrity.records.toLocaleString("en-IN")} records (published ${when(p.published)}). Run `,
         h("code", { class: "mono", text: "--publish" }), " again to include the newest."));
@@ -634,7 +697,8 @@
     const code = h("code", { class: "mono", style: "font-size:20px", text: r.invite });
     const rotate = h("button", { class: "btn small", type: "button", text: "Make a new code" });
     rotate.addEventListener("click", async () => { const j = await api("/api/team/invite", {}); code.textContent = j.invite; });
-    $view.replaceChildren(pageHead("Team", "Everyone here sees every node on this dashboard."),
+    $view.replaceChildren(pageHead("Team", CLOUD && r.org ? `Everyone in ${r.org} sees every node of this organisation.` : "Everyone here sees every node on this dashboard."),
+      CLOUD ? connectCard(r) : "",
       h("section", { class: "card", style: "margin-bottom:18px" }, h("h2", { text: "Invite code" }),
         h("p", { class: "muted", text: "A teammate needs this code to create an account. Make a new code to stop the old one working." }),
         h("div", { style: "display:flex;gap:14px;align-items:center;flex-wrap:wrap" }, code, rotate)),
@@ -642,6 +706,41 @@
         h("thead", {}, h("tr", {}, ["Name", "Email", "Role", "Joined"].map((t) => h("th", { scope: "col", text: t })))),
         h("tbody", {}, r.users.map((u) => h("tr", {}, h("td", { text: u.name }), h("td", { text: u.email }),
           h("td", { text: u.role === "admin" ? "Admin" : "Member" }), h("td", { text: when(u.created) }))))))));
+  }
+
+  // Online only: the Mac that runs the ledger pushes its verified view here with a sync code.
+  function connectCard(r) {
+    const out = h("div");
+    const make = h("button", { class: "btn primary small", type: "button", text: r.links ? "Make another sync code" : "Make a sync code" });
+    make.addEventListener("click", async () => {
+      make.disabled = true;
+      try {
+        const { code } = await api("/api/sync/link", {});
+        const cmd = `python3 saakshi_cloud_sync.py --link ${code}`;
+        const copy = h("button", { class: "btn small", type: "button", text: "Copy command" });
+        copy.addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(cmd); copy.textContent = "Copied"; } catch (e) { copy.textContent = "Select it to copy"; }
+        });
+        out.replaceChildren(
+          h("p", {}, "In Terminal on that Mac, in the SAAKSHI folder, run this once:"),
+          h("div", { class: "link mono", style: "user-select:all;word-break:break-all;margin:8px 0", text: cmd }), copy,
+          h("p", { class: "muted", style: "font-size:13px" }, "Then keep ",
+            h("code", { class: "mono", text: "python3 saakshi_cloud_sync.py" }),
+            " running next to the ledger. This code is shown only once and works like a password for your organisation's data: don't post it in chats or screenshots."));
+      } catch (x) { out.replaceChildren(h("p", { class: "err", text: x.message })); }
+      make.disabled = false;
+    });
+    const revoke = h("button", { class: "btn small", type: "button", text: "Disconnect all Macs" });
+    revoke.addEventListener("click", async () => {
+      if (!confirm("Disconnect every Mac from this organisation? They stop syncing until you make a new code.")) return;
+      try { const j = await api("/api/sync/revoke", {}); out.replaceChildren(h("p", { class: "saved", text: `Disconnected ${j.count}.` })); }
+      catch (x) { out.replaceChildren(h("p", { class: "err", text: x.message })); }
+    });
+    return h("section", { class: "card", style: "margin-bottom:18px" }, h("h2", { text: "Connect this Mac" }),
+      h("p", { class: "muted" }, "The Mac running the ledger checks every record and chip signature, then sends what you see here. ",
+        r.lastSync ? `Last update ${ago(r.lastSync)}.` : "Nothing received yet.",
+        r.links ? ` ${r.links} sync code${r.links === 1 ? "" : "s"} active.` : ""),
+      h("div", { style: "display:flex;gap:10px;flex-wrap:wrap" }, make, r.links ? revoke : null), out);
   }
 
   boot().catch(() => showAuth());

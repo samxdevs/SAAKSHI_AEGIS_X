@@ -20,3 +20,10 @@ __pycache__/
 *.pyc
 .DS_Store
 .venv/
+
+# --- online dashboard (saakshi_cloud) ---
+saakshi_cloud/sync_link.txt
+saakshi_cloud/state/
+saakshi_cloud/site_build/
+saakshi_cloud/config.json
+.netlify/
