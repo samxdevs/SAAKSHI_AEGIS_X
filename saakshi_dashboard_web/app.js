@@ -523,6 +523,11 @@
         h("div", { class: "chart-head" }, h("h2", { text: "Humidity" })),
         lineChart(v.series, "rh", { title: "Humidity", unit: "%", digits: 0, height: 150 })),
       h("section", { class: "card" },
+        h("div", { class: "chart-head" }, h("h2", { text: "Ethylene gas" })),
+        // Firmware v8 adds the ME3-C2H4 reading; until then there is nothing to draw, so say so plainly.
+        v.series.some((b) => b.eth) ? lineChart(v.series, "eth", { title: "Ethylene gas", unit: "ppm", digits: 1, height: 150 })
+          : h("p", { class: "muted", text: "Sensor not connected." })),
+      h("section", { class: "card" },
         h("div", { class: "chart-head" }, h("h2", { text: "Jolts" }), h("div", { class: "legend" },
           h("span", { text: "biggest knock in each step" }))),
         st.mpuMissing ? h("p", { class: "muted", text: "The motion sensor (MPU-6050) isn't answering on this node, so there's no jolt data. Check its wiring (address 0x69, AD0 to 3V3)." })
