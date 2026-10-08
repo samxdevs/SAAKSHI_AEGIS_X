@@ -273,18 +273,14 @@
   async function viewNodes() {
     const o = await getOverview();
     const online = o.nodes.filter((n) => n.status.state === "online").length;
-    const out = [pageHead("Your nodes", h("span", { class: "summary" },
-      h("span", {}, h("b", { text: o.nodes.length }), o.nodes.length === 1 ? " node" : " nodes"),
-      h("span", {}, h("b", { text: online }), " online"),
-      h("span", {}, h("b", { text: o.openAlerts }), o.openAlerts === 1 ? " open alert" : " open alerts"),
-      h("span", {}, o.polygon.error ? "Polygon not reachable" : (o.polygon.checkedAt ? `Polygon checked ${ago(o.polygon.checkedAt, o.now)}` : "Polygon not checked yet"))), liveBadge(o))];
+    const out = [pageHead("Your nodes", "Every reading is signed by the node's security chip and checked again before it's shown.", liveBadge(o))];
     if (!o.crypto) out.push(h("div", { class: "banner info" }, icon("info"), h("div", {},
       "Chip signatures were checked by the ledger but aren't re-checked here. To re-check them on this Mac too, run ",
       h("code", { class: "mono", text: "python3 -m pip install cryptography" }), " and restart the dashboard.")));
     if (o.cloud && o.syncedAt && o.now - o.syncedAt > 180) out.push(h("div", { class: "banner warning" }, icon("warning"), h("div", {},
       h("b", { text: `Last update from the Mac ${ago(o.syncedAt, o.now)}. ` }),
       "What you see is as of then. On the Mac that runs the ledger, start ",
-      h("code", { class: "mono", text: "python3 saakshi_cloud_sync.py" }), " for live data.")));
+      h("code", { class: "mono", text: "bash saakshi_start.sh" }), " for live data.")));
     if (!o.nodes.length && o.cloud) {
       out.push(h("div", { class: "card empty" }, h("h2", { text: "No nodes here yet" }),
         h("p", {}, me.role === "admin" ? "Connect the Mac that runs the ledger: open " : "Ask your admin to connect the Mac that runs the ledger (Team → Connect this Mac).",
@@ -299,16 +295,31 @@
           " and power the node: it appears here as soon as its first record arrives.")));
       return $view.replaceChildren(...out);
     }
+    // fleet at a glance
+    const records = o.nodes.reduce((sum, n) => sum + n.trips.reduce((a, t) => a + t.records, 0), 0);
+    const anchored = o.nodes.map((n) => n.anchor).filter((a) => a && a.seq != null).sort((a, b) => (b.time || 0) - (a.time || 0))[0];
+    const crit = o.nodes.filter((n) => n.alerts.worst === "critical").length;
+    out.push(h("div", { class: "fleet" },
+      stat("Online now", `${online} / ${o.nodes.length}`, online === o.nodes.length ? "every node reporting" : "some nodes are quiet", online < o.nodes.length ? "warn" : "good"),
+      stat("Records verified", records.toLocaleString("en-IN"), "hash, link and chip signature"),
+      stat("Open alerts", o.openAlerts.toLocaleString("en-IN"), crit ? `${crit} node${crit === 1 ? "" : "s"} with a critical one` : "nothing critical", crit ? "bad" : null, "#/alerts"),
+      stat("Locked on Polygon", anchored ? `#${anchored.seq}` : "–", anchored && anchored.time ? `newest anchor ${ago(anchored.time, o.now)}` : "no anchor yet", anchored ? "good" : null)));
     out.push(h("div", { class: "nodes" }, o.nodes.map((n) => {
       const L = n.last;
       const hasT = L && !(L.flags & 2);
-      return h("a", { class: "card node", href: `#/node/${encodeURIComponent(n.node)}` },
+      const cfg = n.settings || {}, band = cfg.lo != null && cfg.hi != null ? [cfg.lo, cfg.hi] : null;
+      const out_ = hasT && band && (L.temp < band[0] || L.temp > band[1]);
+      const temps = (n.spark || []).map((x) => x[1]).filter((x) => x != null);
+      return h("a", { class: `card node${out_ ? " out" : ""}`, href: `#/node/${encodeURIComponent(n.node)}` },
         h("div", { class: "id" }, h("div", {}, h("div", { class: "name", text: displayName(n) }),
           h("div", { class: "nid", text: n.name ? n.node : `${n.trips.length} trip${n.trips.length === 1 ? "" : "s"}` })),
           stateBadge(n.status)),
         h("div", { class: "reading" },
           h("div", { class: "t" }, hasT ? num(L.temp, 1) : "–", h("small", { text: "°C" })),
-          h("div", { class: "rh" }, hasT ? num(L.rh, 0) : "–", h("small", { text: " % RH" }))),
+          h("div", { class: "chips" },
+            h("span", { class: "chip" }, hasT ? num(L.rh, 0) : "–", h("small", { text: " % RH" })),
+            L && L.eth != null ? h("span", { class: "chip" }, num(L.eth, 1), h("small", { text: " ppm C₂H₄" })) : null)),
+        temps.length > 2 ? spark(temps, { band, height: 46, label: "Temperature, newest readings" }) : null,
         h("div", { class: "meta" },
           h("span", {}, `Last heard ${ago(n.status.lastHeard, o.now)}${L && L.t ? ` · reading from ${when(L.t)}` : ""}`),
           anchorLine(n.anchor),
@@ -316,6 +327,27 @@
             : h("span", { text: "No open alerts" })));
     })));
     $view.replaceChildren(...out);
+  }
+
+  function stat(k, v, sub, tone, href) {
+    return h(href ? "a" : "div", { class: `card stat${tone ? " " + tone : ""}`, href: href || null },
+      h("div", { class: "k", text: k }), h("div", { class: "v num", text: v }), sub ? h("div", { class: "s", text: sub }) : null);
+  }
+
+  // A tiny trend line: no axes, just the shape of the newest readings (and the allowed band, if any).
+  function spark(vals, opts) {
+    const W = 120, H = opts.height || 30;
+    const el = s("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "spark", role: "img", "aria-label": opts.label || "trend" });
+    if (vals.length < 2) return el;
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (opts.band) { lo = Math.min(lo, opts.band[0]); hi = Math.max(hi, opts.band[1]); }
+    const pad = (hi - lo || 1) * 0.12; lo -= pad; hi += pad;
+    const X = (i) => (i / (vals.length - 1)) * W, Y = (v) => H - ((v - lo) / (hi - lo)) * H;
+    if (opts.band) el.append(s("rect", { x: 0, width: W, y: Y(opts.band[1]), height: Math.max(0, Y(opts.band[0]) - Y(opts.band[1])), fill: "var(--band)" }));
+    const pts = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`);
+    el.append(s("polygon", { points: `0,${H} ${pts.join(" ")} ${W},${H}`, fill: "var(--cold-soft)" }));
+    el.append(s("polyline", { points: pts.join(" "), fill: "none", stroke: "var(--cold)", "stroke-width": 1.6, "vector-effect": "non-scaling-stroke", "stroke-linejoin": "round" }));
+    return el;
   }
 
   // ---------------------------------------------------------------- charts
@@ -335,7 +367,7 @@
     const pts = series.map((b, i) => ({ i, b, v: b[key] })).filter((p) => p.v);
     function draw() {
       wrap.querySelector("svg") && wrap.querySelector("svg").remove();
-      const W = Math.max(280, wrap.clientWidth || 600), H = opts.height, L = 46, R = 8, T = 10, B = 24;
+      const W = Math.max(280, wrap.clientWidth || 600), H = opts.height, L = 46, R = 8, T = 20, B = 24;
       const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, height: H });
       if (!pts.length) { wrap.prepend(svg); return; }
       const x0 = series[0].s0, x1 = series[series.length - 1].s1 || x0 + 1;
@@ -350,7 +382,7 @@
         const t = s("text", { x: L - 8, y: Y(v) + 4, "text-anchor": "end" }); t.textContent = `${num(v, opts.digits)}`;
         ax.append(t);
       }
-      const unit = s("text", { x: L - 8, y: T - 0, "text-anchor": "end" }); unit.textContent = opts.unit; ax.append(unit);
+      const unit = s("text", { x: L - 8, y: T - 9, "text-anchor": "end" }); unit.textContent = opts.unit; ax.append(unit);
       // x labels: time if known, else record number
       const lab = (b) => b.t ? when(b.t) : `#${b.s0}`;
       [[series[0], "start"], W >= 560 ? [series[Math.floor(series.length / 2)], "middle"] : null, [series[series.length - 1], "end"]].filter(Boolean).forEach(([b, a]) => {
@@ -361,6 +393,14 @@
       if (opts.band) {
         svg.append(s("rect", { x: L, width: W - L - R, y: Y(opts.band[1]), height: Math.max(0, Y(opts.band[0]) - Y(opts.band[1])), fill: "var(--band)" }));
         for (const v of opts.band) svg.append(s("line", { x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: "var(--band-line)", "stroke-dasharray": "5 5", "stroke-width": 1.2 }));
+      }
+      // where the trip was locked on Polygon: everything up to that record can no longer change
+      for (const m of opts.marks || []) {
+        if (m.s < x0 || m.s > x1) continue;
+        const xm = X({ s0: m.s, s1: m.s });
+        svg.append(s("line", { class: "anchor-mark", x1: xm, x2: xm, y1: T, y2: H - B }));
+        const lt = s("text", { class: "anchor-label", x: xm - 3, y: T + 11, "text-anchor": "end" }); lt.textContent = `#${m.s}`;
+        svg.append(lt);
       }
       // split into runs where data exists (sensor failures leave gaps, never drawn as zero)
       const runs = []; let cur = [];
@@ -488,6 +528,56 @@
     [0x100, "UNSIGNED", 0], [0x1, "BOOT", 0], [0x4, "NO TIME", 0], [0x400, "MPU FAIL", 0], [0x200, "RTC FAIL", 0],
     [0x4000, "C₂H₄ WARM-UP", 0]];
 
+  // The live view uses the newest records one by one; "whole trip" uses the averaged steps.
+  let tripRange = "live";
+  try { tripRange = localStorage.getItem("saakshi.range") || "live"; } catch (e) { /* private window */ }
+  function liveSeries(live) {
+    return live.map((r) => {
+      const b = { s0: r.s, s1: r.s, t: r.t, g: r.g || 0, shock: !!(r.f & 0x20) };
+      for (const k of ["temp", "rh", "press", "gas", "eth"]) if (r[k] != null) b[k] = [r[k], r[k], r[k]];
+      return b;
+    });
+  }
+
+  // "Right now": the newest value of each sensor, how it moved in 10 minutes, and its last hour.
+  function nowTiles(v, band) {
+    const L = v.live || [];
+    const newest = (k) => { for (let i = L.length - 1; i >= 0; i--) if (L[i][k] != null) return L[i]; return null; };
+    const before = (k, r) => {
+      for (let i = L.length - 1; i >= 0; i--) {
+        const x = L[i];
+        if (x === r || x[k] == null) continue;
+        if (r.t && x.t ? r.t - x.t >= 600 : r.s - x.s >= 60) return x;
+      }
+      return null;
+    };
+    const tile = (label, k, unit, digits, o) => {
+      o = o || {};
+      const r = newest(k), p = r ? before(k, r) : null, d = r && p ? r[k] - p[k] : null;
+      const trend = d == null ? (r ? "steady data needed" : "") :
+        `${Math.abs(d) < (o.flat || 0.05) ? "→ steady" : (d > 0 ? "↑ +" : "↓ ") + num(d, digits)} in 10 min`;
+      const vals = L.map((x) => x[k]).filter((x) => x != null);
+      const hot = r && o.hot && o.hot(r[k]);
+      return h("div", { class: `tile${hot ? " hot" : ""}` },
+        h("div", { class: "k", text: label }),
+        h("div", { class: "v num" }, r ? num(r[k], digits) : "–", h("small", { text: r ? ` ${unit}` : "" })),
+        h("div", { class: "s", text: r ? trend : (o.none || "no reading") }),
+        vals.length > 2 ? spark(vals, { band: o.band, label: `${label}, last hour` }) : null);
+    };
+    const jolts = L.filter((x) => !(x.f & 0x400)).map((x) => x.g);
+    return h("div", { class: "tiles" },
+      tile("Temperature", "temp", "°C", 1, { band, hot: band ? (x) => x < band[0] || x > band[1] : null, flat: 0.1 }),
+      tile("Humidity", "rh", "%", 0, { flat: 0.5 }),
+      tile("Ethylene", "eth", "ppm", 1, { none: "sensor not connected", hot: (x) => x >= 10, flat: 0.5 }),
+      tile("Pressure", "press", "hPa", 1, { flat: 0.1 }),
+      tile("VOC gas", "gas", "kΩ", 1, { flat: 0.3 }),
+      h("div", { class: `tile${jolts.some((g) => g >= 1) ? " hot" : ""}` },
+        h("div", { class: "k", text: "Biggest jolt" }),
+        h("div", { class: "v num" }, jolts.length ? num(Math.max(...jolts), 2) : "–", h("small", { text: jolts.length ? " g" : "" })),
+        h("div", { class: "s", text: jolts.length ? "in the last hour" : "motion sensor not answering" }),
+        jolts.length > 2 ? spark(jolts, { label: "Jolts, last hour" }) : null));
+  }
+
   async function viewNode(nodeId, chain) {
     const o = await getOverview();
     const n = o.nodes.find((x) => x.node === nodeId);
@@ -495,11 +585,17 @@
     chain = chain && n.trips.some((t) => t.chain === chain) ? chain : n.currentChain;
     const v = await api(`/api/trip?node=${encodeURIComponent(nodeId)}&chain=${encodeURIComponent(chain)}`);
     const st = v.stats, band = v.settings.lo != null && v.settings.hi != null ? [v.settings.lo, v.settings.hi] : null;
+    const live = tripRange === "live" && v.live && v.live.length > 1;
+    const ser = live ? liveSeries(v.live) : v.series;
+    const marks = (v.anchors || []).map((a) => ({ s: a.seq }));
 
     const tripSel = h("select", { "aria-label": "Trip" }, n.trips.slice().reverse().map((t) => h("option", {
       value: t.chain, selected: t.chain === chain || null,
       text: `Trip ${t.chain}${t.from ? " · " + when(t.from, { hour: undefined, minute: undefined }) : ""} · ${t.records.toLocaleString("en-IN")} records${t.chain === n.currentChain ? " (current)" : ""}` })));
     tripSel.addEventListener("change", () => { location.hash = `#/node/${encodeURIComponent(nodeId)}/${tripSel.value}`; });
+    const range = h("div", { class: "segmented", role: "group", "aria-label": "Chart range" },
+      [["live", "Last hour"], ["trip", "Whole trip"]].map(([k, l]) => h("button", { type: "button", "aria-pressed": tripRange === k ? "true" : "false", text: l,
+        onclick: () => { tripRange = k; try { localStorage.setItem("saakshi.range", k); } catch (e) { /* fine */ } render(true); } })));
 
     const kp = (k, val, alert) => h("div", { class: `kpi${alert ? " hot" : ""}` }, h("div", { class: "v num", text: val }), h("div", { class: "k", text: k }));
     const kpis = h("div", { class: "card kpis" },
@@ -511,31 +607,29 @@
       kp("Jolts over 1 g", st.mpuMissing ? "No sensor" : st.shocks.toLocaleString("en-IN"), st.shocks > 0),
       kp("Restarts", st.restarts.toLocaleString("en-IN"), st.restarts > 0));
 
-    const span = st.from ? `${whenLong(st.from)} to ${whenLong(st.to)}, ${dur(st.to - st.from)}` : "Clock not set on these records";
+    const span = live ? `Newest ${ser.length} readings, one by one${ser[0].t ? `, from ${when(ser[0].t)}` : ""}.`
+      : st.from ? `${whenLong(st.from)} to ${whenLong(st.to)}, ${dur(st.to - st.from)}.` : "Clock not set on these records.";
+    const hasEth = ser.some((b) => b.eth);
+    const card = (title, legend, body, note) => h("section", { class: "card" },
+      h("div", { class: "chart-head" }, h("h2", { text: title }), legend ? h("div", { class: "legend" }, legend) : null), body, note || null);
     const main = h("div", { class: "charts" },
-      h("section", { class: "card" },
-        h("div", { class: "chart-head" }, h("h2", { text: "Temperature" }), h("div", { class: "legend" },
-          h("span", {}, h("i", { class: "ln" }), "average"), h("span", {}, h("i", { class: "env" }), "range in each step"),
-          band ? h("span", {}, h("i", { class: "bd" }), `allowed ${num(band[0], 0)}–${num(band[1], 0)} °C`) : null)),
-        lineChart(v.series, "temp", { title: "Temperature", unit: "°C", digits: 0, height: 230, band }),
-        h("p", { class: "chart-note" }, `${span}. `, st.noTime ? `${st.noTime} records had no clock time and are placed by record number. ` : "",
+      card("Temperature", [h("span", {}, h("i", { class: "ln" }), live ? "reading" : "average"), live ? null : h("span", {}, h("i", { class: "env" }), "range in each step"),
+          band ? h("span", {}, h("i", { class: "bd" }), `allowed ${num(band[0], 0)}–${num(band[1], 0)} °C`) : null,
+          marks.length ? h("span", {}, h("i", { class: "am" }), "locked on Polygon") : null],
+        lineChart(ser, "temp", { title: "Temperature", unit: "°C", digits: 0, height: 230, band, marks }),
+        h("p", { class: "chart-note" }, `${span} `, !live && st.noTime ? `${st.noTime} records had no clock time and are placed by record number. ` : "",
           st.sensorFail ? `${st.sensorFail} failed readings are left out.` : "")),
-      h("section", { class: "card" },
-        h("div", { class: "chart-head" }, h("h2", { text: "Humidity" })),
-        lineChart(v.series, "rh", { title: "Humidity", unit: "%", digits: 0, height: 150 })),
-      h("section", { class: "card" },
-        h("div", { class: "chart-head" }, h("h2", { text: "Ethylene gas" })),
-        // Firmware v8 adds the ME3-C2H4 reading; until then there is nothing to draw, so say so plainly.
-        v.series.some((b) => b.eth) ? lineChart(v.series, "eth", { title: "Ethylene gas", unit: "ppm", digits: 1, height: 150 })
-          : h("p", { class: "muted", text: "Sensor not connected." }),
-        v.series.some((b) => b.eth) && st.ethState === "warmup" ? h("p", { class: "chart-note",
-          text: "Warming up: the sensor needs 48 hours powered before its readings settle. Until then they aren't used for alerts." }) : null,
-        v.series.some((b) => b.eth) && st.ethState === "none" ? h("p", { class: "chart-note", text: "Sensor not connected right now." }) : null),
-      h("section", { class: "card" },
-        h("div", { class: "chart-head" }, h("h2", { text: "Jolts" }), h("div", { class: "legend" },
-          h("span", { text: "biggest knock in each step" }))),
+      card("Humidity", null, lineChart(ser, "rh", { title: "Humidity", unit: "%", digits: 0, height: 150 })),
+      card("Ethylene gas", null,
+        hasEth ? lineChart(ser, "eth", { title: "Ethylene gas", unit: "ppm", digits: 1, height: 150 }) : h("p", { class: "muted", text: "Sensor not connected." }),
+        hasEth && st.ethState === "warmup" ? h("p", { class: "chart-note", text: "Warming up: the sensor needs 48 hours powered before its readings settle. Until then they aren't used for alerts." })
+          : hasEth && st.ethState === "none" ? h("p", { class: "chart-note", text: "Sensor not connected right now." }) : null),
+      h("div", { class: "pair" },
+        card("Pressure", null, lineChart(ser, "press", { title: "Pressure", unit: "hPa", digits: 1, height: 120 })),
+        card("VOC gas", h("span", { text: "lower = more gases" }), lineChart(ser, "gas", { title: "VOC gas resistance", unit: "kΩ", digits: 2, height: 120 }))),
+      card("Jolts", h("span", { text: live ? "each reading" : "biggest knock in each step" }),
         st.mpuMissing ? h("p", { class: "muted", text: "The motion sensor (MPU-6050) isn't answering on this node, so there's no jolt data. Check its wiring (address 0x69, AD0 to 3V3)." })
-          : joltChart(v.series)));
+          : joltChart(ser)));
     const csv = h("a", { class: "btn small", href: `/api/export?node=${encodeURIComponent(nodeId)}&chain=${chain}`, text: "Download CSV" });
     if (CLOUD) csv.addEventListener("click", async (e) => {
       e.preventDefault();
@@ -549,7 +643,7 @@
       } catch (x) { csv.textContent = "Download failed, try again"; }
     });
     const lower = h("div", { class: "lower" },
-      alertsCard(v.alerts.filter((a) => !a.acked), "Alerts on this trip", true),
+      alertsCard(v.alerts.filter((a) => !a.acked), "Alerts on this trip", true, 4),
       recentCard(v.recent));
     const side = h("div", { class: "side" }, integrityCard(v, o), shareCard(v), settingsCard(n, v));
 
@@ -558,7 +652,8 @@
       h("div", { class: "titlebar" }, h("h1", { text: displayName(n) }), stateBadge(n.status), liveBadge(o)),
       h("p", { class: "muted" }, n.name ? `${n.node} · ` : "", `Last heard ${ago(n.status.lastHeard, o.now)}`,
         n.status.interval ? ` · logs every ${dur(n.status.interval)}` : ""),
-      h("div", { class: "filters" }, h("label", {}, "Trip", tripSel), csv),
+      nowTiles(v, band),
+      h("div", { class: "filters" }, h("label", {}, "Trip", tripSel), range, csv),
       kpis,
       h("div", { class: "layout" }, main, side, lower));
   }
@@ -592,7 +687,14 @@
       a.tx ? " · " : null,
       h("a", { href: `${o.polygon.explorer}/address/${o.polygon.contract}`, target: "_blank", rel: "noopener", text: "SaakshiRegistry contract" }),
       o.polygon.checkedAt ? ` · checked ${ago(o.polygon.checkedAt, o.now)}` : "");
-    return h("section", { class: "card panel" }, h("h2", { text: "Integrity" }), ...rows, links,
+    const hist = (v.anchors || []).slice().reverse();
+    const history = hist.length ? h("div", { class: "anchors" },
+      h("div", { class: "k", text: `Anchors on Polygon for this trip (${hist.length})` }),
+      h("ol", {}, hist.slice(0, 5).map((x) => h("li", {},
+        h("span", { class: "num", text: `#${x.seq}` }), h("span", { class: "muted", text: x.time ? when(x.time) : "" }),
+        x.tx ? h("a", { href: `${o.polygon.explorer}/tx/${x.tx}`, target: "_blank", rel: "noopener noreferrer", text: `block ${x.block || "tx"}` }) : null))),
+      hist.length > 5 ? h("div", { class: "muted", style: "font-size:13px", text: `and ${hist.length - 5} earlier` }) : null) : null;
+    return h("section", { class: "card panel" }, h("h2", { text: "Trust & blockchain" }), ...rows, history, links,
       CLOUD ? h("p", { class: "muted", style: "font-size:13px;margin:8px 0 0", text: "Anchoring is automatic; this panel re-checks Polygon every minute." })
         : h("div", { style: "margin-top:10px" }, refresh));
   }
@@ -658,9 +760,13 @@
     return h("section", { class: "card panel" }, h("h2", { text: "Settings" }), form);
   }
 
-  function recentCard(rows) {
+  let showRows = 10;
+  function recentCard(all) {
+    const rows = all.slice(0, showRows);
     const flags = (fl) => FLAG_NAMES.filter(([b]) => fl & b).map(([, name, hot]) => h("span", { class: `flag${hot ? " hot" : ""}`, text: name }));
-    return h("section", { class: "card" }, h("h2", { text: "Latest readings" }),
+    const more = all.length > 10 ? h("button", { class: "btn small more", type: "button", text: showRows > 10 ? "Show fewer" : `Show ${all.length}`,
+      onclick: () => { showRows = showRows > 10 ? 10 : all.length; render(true); } }) : null;
+    return h("section", { class: "card" }, h("div", { class: "chart-head" }, h("h2", { text: "Latest readings" }), more),
       h("div", { class: "table-wrap" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Record", "Time", "Temp °C", "RH %", "Pressure hPa", "Gas kΩ", "C₂H₄ ppm", "Jolt g", "Flags"].map((t) => h("th", { scope: "col", text: t })))),
         h("tbody", {}, rows.map((r) => h("tr", {},
@@ -690,10 +796,14 @@
       a.type === "offline" && !a.acked ? h("span") : btn);
   }
 
-  function alertsCard(list, title, compact) {
+  const openLists = new Set();
+  function alertsCard(list, title, compact, limit) {
+    const folded = limit && list.length > limit && !openLists.has(title);
+    const more = limit && list.length > limit ? h("button", { class: "btn small more", type: "button", text: folded ? `Show all ${list.length}` : "Show fewer",
+      onclick: () => { if (folded) openLists.add(title); else openLists.delete(title); render(true); } }) : null;
     return h("section", { class: "card", style: "padding:0" },
-      h("h2", { style: "padding:16px 16px 0", text: title }),
-      list.length ? h("div", { class: "alerts" }, list.map((a) => alertRow(a, compact)))
+      h("div", { class: "chart-head", style: "padding:16px 16px 0" }, h("h2", { text: title }), more),
+      list.length ? h("div", { class: "alerts" }, (folded ? list.slice(0, limit) : list).map((a) => alertRow(a, compact)))
         : h("p", { class: "muted", style: "padding:0 16px 16px", text: "Nothing needs attention." }));
   }
 

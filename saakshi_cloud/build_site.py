@@ -29,7 +29,9 @@ HEADERS = f"""/*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' {SUPABASE_URL} https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; object-src 'none'; connect-src 'self' {SUPABASE_URL} https://polygon-amoy-bor-rpc.publicnode.com https://polygon-amoy.drpc.org https://rpc-amoy.polygon.technology; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
 /static/*
   Cache-Control: no-cache
 /verify/data/*
@@ -52,7 +54,7 @@ def main():
         shutil.rmtree(OUT)
     (OUT / "static").mkdir(parents=True)
 
-    for name in ("app.js", "app.css", "landing.css", "theme.js"):
+    for name in ("app.js", "app.css", "landing.css", "landing.js", "theme.js"):
         shutil.copy2(WEB / name, OUT / "static" / name)
     shutil.copy2(CLOUD / "web" / "cloud.js", OUT / "static" / "cloud.js")
     shutil.copy2(VENDOR, OUT / "static" / "supabase.js")
@@ -63,7 +65,7 @@ def main():
     app = inject((WEB / "app.html").read_text(), '<script src="/static/app.js"></script>',
                  [cfg, '<script src="/static/supabase.js"></script>', '<script src="/static/cloud.js"></script>'])
     (OUT / "app.html").write_text(app)
-    landing = inject((WEB / "index.html").read_text(), "<script>\ndocument.getElementById(\"order\")",
+    landing = inject((WEB / "index.html").read_text(), '<script src="/static/landing.js"></script>',
                      [cfg, '<script src="/static/cloud.js"></script>'])
     (OUT / "index.html").write_text(landing)
 

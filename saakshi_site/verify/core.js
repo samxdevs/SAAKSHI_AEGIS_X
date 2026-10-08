@@ -114,10 +114,18 @@
 
   // ---------- the whole check ----------
   async function verify(bundle, keyB64, opts = {}) {
-    const R = { node: bundle.node, chain: bundle.chain, count: bundle.count, firstSeq: bundle.firstSeq,
+    // The bundle is untrusted input: its numbers must be numbers before anything uses or shows them.
+    const whole = (x) => Number.isSafeInteger(x) && x >= 0;
+    const R = { node: String(bundle.node || ""), chain: String(bundle.chain || ""),
+      count: whole(bundle.count) ? bundle.count : 0, firstSeq: whole(bundle.firstSeq) ? bundle.firstSeq : 0,
       steps: [], records: null, problem: null, anchor: null, mode: keyB64 ? "full" : "public" };
     const step = (id, ok, text, extra) => { R.steps.push(Object.assign({ id, ok, text }, extra || {})); return ok; };
     const fail = (id, text, extra) => { step(id, false, text, extra); R.problem = R.problem || { id, text }; };
+    if (!whole(bundle.count) || !whole(bundle.firstSeq) || !/^[0-9a-f]{8}$/.test(R.chain)) {
+      fail("format", "The published file is not a valid SAAKSHI record.");
+      R.verdict = "tampered";
+      return R;
+    }
 
     // 1. identity: the node ID printed on the box is the hash of this public key
     const pub = unhex(bundle.pubkey);

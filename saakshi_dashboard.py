@@ -642,7 +642,7 @@ def buckets(rows, n=360):
         b = {"s0": part[0]["seq"], "s1": part[-1]["seq"], "t": t,
              "g": max(r["peak"] for r in part), "shock": any(r["flags"] & F["SHOCK"] for r in part)}
         if good:
-            for k in ("temp", "rh"):
+            for k in ("temp", "rh", "press", "gas"):
                 v = [r[k] for r in good]
                 b[k] = [round(min(v), 3), round(sum(v) / len(v), 3), round(max(v), 3)]
         e = [r["eth"] for r in part if r["eth"] is not None]
@@ -652,6 +652,26 @@ def buckets(rows, n=360):
                 b["ethWarm"] = True
         out.append(b)
     return out
+
+
+LIVE_N = 360            # the "last hour" view: 360 records at 10 s
+
+
+def live_rows(rows, n=LIVE_N):
+    """The newest records unaveraged, for the live view and the trend arrows."""
+    out = []
+    for r in rows[-n:]:
+        fail = r["flags"] & F["SENSOR_FAIL"]
+        out.append({"s": r["seq"], "t": r["t"], "f": r["flags"], "g": r["peak"], "eth": r["eth"],
+                    **{k: None if fail else r[k] for k in ("temp", "rh", "press", "gas")}})
+    return out
+
+
+def anchors_of(store, chain):
+    """Every head this relay anchored for the chain: the trip's blockchain history."""
+    posted = load_json(store.relay / "posted.json", [])
+    return [{k: p.get(k) for k in ("seq", "time", "tx", "block")}
+            for p in posted if isinstance(p, dict) and p.get("chain") == chain]
 
 
 def last_reading(r):
@@ -676,6 +696,8 @@ def overview(store):
                 "status": store.node_status(node, trips, s, now),
                 "keyKnown": store.keys.get(node) is not None,
                 "last": last_reading(latest.rows[-1]) if latest.rows else None,
+                "spark": [[r["t"], None if r["flags"] & F["SENSOR_FAIL"] else round(r["temp"], 2)]
+                          for r in latest.rows[-90:]],
                 "currentChain": latest.chain,
                 "trips": [{"chain": t.chain, "records": len(t.rows), "first": t.rows[0]["seq"] if t.rows else None,
                            "last": t.rows[-1]["seq"] if t.rows else None,
@@ -705,6 +727,7 @@ def trip_view(store, node, chain):
             "integrity": {"records": len(rows), "problem": t.problem, "signaturesChecked": t.checked_sigs,
                           "covered": t.covered, "unsigned": sum(1 for r in rows if r["flags"] & F["UNSIGNED"])},
             "stats": summarise(rows, s), "series": buckets(rows), "recent": recent,
+            "live": live_rows(rows), "anchors": anchors_of(store, chain),
             "anchor": store.anchor_for(t) if rows else None,
             "share": store.share(node, chain),
             "alerts": [a for a in store.all_alerts() if a["node"] == node and (a["chain"] in (chain, None))],
@@ -786,7 +809,12 @@ class Auth:
 # ======================================================================== HTTP
 
 STATIC = {"/": "index.html", "/app": "app.html", "/static/app.js": "app.js", "/static/app.css": "app.css",
-          "/static/landing.css": "landing.css", "/static/theme.js": "theme.js"}
+          "/static/landing.css": "landing.css", "/static/theme.js": "theme.js", "/static/landing.js": "landing.js"}
+# No inline scripts anywhere, so the browser can refuse any script that was injected into a page.
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+       "font-src https://fonts.gstatic.com; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; "
+       "base-uri 'none'; form-action 'self'; connect-src 'self' https://polygon-amoy-bor-rpc.publicnode.com "
+       "https://polygon-amoy.drpc.org https://rpc-amoy.polygon.technology")
 ORDER_HITS = {}
 
 
@@ -815,6 +843,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", CSP)
 
     def fail(self, code, msg):
         self.send_json({"error": msg}, code)
