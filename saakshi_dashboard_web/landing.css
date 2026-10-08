@@ -1,0 +1,53 @@
+.lp-top { max-width: 1120px; margin: 0 auto; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.lp-top nav { display: flex; align-items: center; gap: 18px; font-size: 15px; font-weight: 600; }
+.lp-top nav a:not(.btn) { color: var(--muted); text-decoration: none; }
+.lp-top nav a:not(.btn):hover { color: var(--ink); }
+.lp-top .btn { text-decoration: none; }
+@media (max-width: 600px) { .lp-top nav a:not(.btn) { display: none; } }
+
+.lp { max-width: 1120px; padding-top: 18px; }
+.hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 48px; align-items: center; padding: 32px 0 56px; }
+@media (max-width: 860px) { .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 12px; } }
+.kicker { color: var(--brand); font-weight: 700; margin: 0 0 10px; letter-spacing: .01em; }
+.hero h1 { font-stretch: 116%; font-size: clamp(34px, 6vw, 58px); line-height: 1.02; letter-spacing: -.02em; max-width: 15ch; }
+.lede { font-size: 19px; color: var(--muted); max-width: 52ch; margin: 18px 0 26px; }
+.cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.cta .btn { text-decoration: none; padding: 11px 18px; font-size: 15px; }
+
+/* the hero is one real record, shown the way the chip sees it */
+.record { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px 22px 18px;
+  box-shadow: 0 1px 0 var(--line), 0 18px 40px -24px rgba(14,34,51,.35); transform: rotate(1.2deg); max-width: 420px; justify-self: center; width: 100%; }
+@media (prefers-reduced-motion: no-preference) { .record { animation: settle .7s cubic-bezier(.2,.8,.2,1) both; } }
+@keyframes settle { from { transform: rotate(5deg) translateY(16px); opacity: 0; } to { transform: rotate(1.2deg); opacity: 1; } }
+.rec-top { display: flex; justify-content: space-between; color: var(--muted); }
+.rec-t { font-stretch: 80%; font-weight: 760; font-size: 88px; line-height: 1; margin: 14px 0 12px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.rec-t small { font-size: 32px; color: var(--muted); font-weight: 600; margin-left: 4px; }
+.rec-rows { display: grid; gap: 0; border-top: 1px dashed var(--line); }
+.rec-rows div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--line); font-size: 15px; }
+.rec-rows span { color: var(--muted); }
+.rec-rows b { font-weight: 650; }
+.rec-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-weight: 700; color: var(--good-ink); }
+.rec-foot svg { width: 16px; height: 16px; }
+
+.how { padding: 24px 0 40px; }
+.how h2 { font-size: 26px; font-stretch: 108%; margin-bottom: 22px; }
+.steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; counter-reset: s;
+  border-top: 2px solid var(--ink); }
+.steps li { counter-increment: s; padding: 18px 20px 22px 0; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.steps li::before { content: counter(s); font-weight: 800; font-stretch: 80%; font-size: 30px; color: var(--brand); line-height: 1; font-variant-numeric: tabular-nums; }
+.steps b { font-size: 18px; }
+.steps span { color: var(--muted); max-width: 34ch; }
+@media (max-width: 860px) { .steps { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .steps { grid-template-columns: 1fr; } }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 0 40px; }
+.split p { color: var(--muted); margin: 0; max-width: 52ch; }
+@media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+
+.request { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 28px; padding: 26px; margin-bottom: 40px; }
+.request h2 { font-size: 24px; }
+.request form { display: grid; gap: 12px; justify-items: start; }
+.request .form-grid { width: 100%; }
+@media (max-width: 760px) { .request { grid-template-columns: 1fr; } }
+.lp-foot { max-width: 1120px; margin: 0 auto; padding: 20px 20px 40px; color: var(--faint); font-size: 13px; border-top: 1px solid var(--line); }
+.rec-cap { font-size: 12px; color: var(--faint); margin-bottom: 8px; }

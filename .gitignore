@@ -1,0 +1,22 @@
+# --- secrets: never commit ---
+relay_key.txt
+*.pem
+saakshi_broker/
+saakshi_relay/
+saakshi_node_v7_1/secrets.h
+saakshi_node_v7_1/broker_ca.h
+saakshi_cloud_bundle.tar.gz
+saakshi_dashboard_data/
+
+# --- data (real records; keep backups, but not in git) ---
+saakshi_ledger/
+saakshi_site/verify/data/*.json
+
+# --- test environments made by tools/make_demo_ledger.py ---
+demo_*/
+
+# --- junk ---
+__pycache__/
+*.pyc
+.DS_Store
+.venv/

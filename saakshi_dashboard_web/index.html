@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SAAKSHI cold-chain witness</title>
+<meta name="description" content="A sealed logger that signs every temperature reading at the source and anchors it on Polygon, so a buyer can check the whole journey on their phone.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧊</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/landing.css">
+</head>
+<body>
+<header class="lp-top">
+  <a class="mark" href="/"><b>SAAK<span>SHI</span></b></a>
+  <nav><a href="#how">How it works</a><a href="#request">Request nodes</a><span data-theme-slot></span><a class="btn small" href="/app">Log in</a></nav>
+</header>
+
+<main class="lp">
+  <section class="hero">
+    <div>
+      <p class="kicker">साक्षी · witness</p>
+      <h1>The box saw every degree. Now your buyer can too.</h1>
+      <p class="lede">SAAKSHI rides inside the crate, signs every reading with a security chip at the moment it's taken, and locks the record on a public blockchain. Your buyer scans the lid and checks the whole journey on their own phone.</p>
+      <div class="cta"><a class="btn primary" href="#request">Request nodes</a><a class="btn" href="/app">Open dashboard</a></div>
+    </div>
+    <figure class="record" aria-label="Example of one signed record"><figcaption class="rec-cap">Example record</figcaption>
+      <div class="rec-top"><span class="mono">SAAKSHI-25D8016E</span><span class="mono">#2126</span></div>
+      <div class="rec-t">4.6<small>°C</small></div>
+      <div class="rec-rows">
+        <div><span>Humidity</span><b>88 %</b></div>
+        <div><span>Jolt</span><b>0.12 g</b></div>
+        <div><span>Previous record</span><b class="mono">9c41…e07a</b></div>
+        <div><span>Signed by chip</span><b class="mono">ECDSA P-256</b></div>
+      </div>
+      <div class="rec-foot"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>Locked on Polygon</div>
+    </figure>
+  </section>
+
+  <section id="how" class="how">
+    <h2>How a reading becomes proof</h2>
+    <ol class="steps">
+      <li><b>Sense</b><span>Temperature, humidity, gas and jolts, every few minutes, in a sealed box that rides with the produce.</span></li>
+      <li><b>Sign</b><span>A security chip signs each reading. Its key can't be copied out, not even by us.</span></li>
+      <li><b>Chain</b><span>Each record carries the fingerprint of the one before it, so nothing can be edited, deleted or reordered unseen.</span></li>
+      <li><b>Survive dead zones</b><span>No signal on the highway? Records keep chaining on the board and sync, encrypted, when it's back.</span></li>
+      <li><b>Anchor</b><span>The newest signed record goes on Polygon. The smart contract checks the chip's signature itself before accepting it.</span></li>
+      <li><b>Verify</b><span>The buyer scans the QR on the lid. Their phone re-checks every reading. No app, no login, no trust in us.</span></li>
+    </ol>
+  </section>
+
+  <section class="split">
+    <div class="card"><h2>For exporters</h2>
+      <p>See every crate live, get an alert the moment a load drifts out of its band or takes a hard knock, and hand buyers proof instead of a spreadsheet.</p></div>
+    <div class="card"><h2>For buyers and inspectors</h2>
+      <p>One scan shows the whole trip and says plainly whether a single reading was changed. The check runs on your phone, against a public record.</p></div>
+  </section>
+
+  <section id="request" class="request card">
+    <div>
+      <h2>Request nodes</h2>
+      <p class="muted">Tell us about your shipments and we'll get back to you. No payment now.</p>
+    </div>
+    <form id="order" novalidate>
+      <div class="form-grid">
+        <label>Your name<input name="name" type="text" autocomplete="name" required maxlength="80"></label>
+        <label>Company<input name="company" type="text" autocomplete="organization" maxlength="120"></label>
+        <label>Phone or email<input name="contact" type="text" autocomplete="email" required maxlength="120"></label>
+        <label>How many nodes<input name="nodes" type="number" min="1" max="10000" value="5"></label>
+        <label class="full">What do you ship?<input name="product" type="text" maxlength="120" placeholder="e.g. mangoes, Mumbai to Dubai, reefer"></label>
+        <label class="full">Anything else<textarea name="note" maxlength="600"></textarea></label>
+      </div>
+      <p id="order-msg" role="status"></p>
+      <button class="btn primary" type="submit">Send request</button>
+    </form>
+  </section>
+</main>
+<footer class="lp-foot">Team AEGIS_X · Smart India Hackathon 2026 · PS 26232 · Records anchored on Polygon Amoy testnet</footer>
+
+<script>
+document.getElementById("order").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, msg = document.getElementById("order-msg"), btn = f.querySelector("button");
+  const body = Object.fromEntries(new FormData(f));
+  msg.className = ""; msg.textContent = "";
+  if (!body.name.trim() || !body.contact.trim()) { msg.className = "err"; msg.textContent = "Please give your name and a phone number or email."; return; }
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "saakshi" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Couldn't send. Try again.");
+    f.reset(); msg.className = "saved"; msg.textContent = "Request sent. We'll be in touch.";
+  } catch (x) { msg.className = "err"; msg.textContent = x.message; }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+SAAKSHI node public key - saved from the ATECC608 setup screen on 23 Sep 2026
+saakshi_pull.py checks every record's signature against this key. Keep this file next to saakshi_pull.py.
+
+node ID     SAAKSHI-25D8016E
+public key  04BF70A4CADB234FA8CE7EA96DA8FCAD27CE71A3EE98B5B97BCF50227E475BF6DA426125465FF2309B4451BD38C5A1FFB2EB84F4734E19878F0AC0285DE5F56336
