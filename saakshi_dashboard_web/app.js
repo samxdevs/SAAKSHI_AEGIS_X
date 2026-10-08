@@ -565,9 +565,11 @@
       : row("wait", "Chip signatures were checked by the ledger; not re-checked here (no public key file or no cryptography module)."));
     if (a.seq != null) {
       rows.push(row("ok", `Locked on Polygon up to record #${a.seq}${a.time ? ` on ${whenLong(a.time)}` : ""}. Polygon checked the chip's signature itself.`,
-        a.behind ? h("div", { class: "muted" }, `${a.behind} newer signed records aren't anchored yet. Run `,
-          h("code", { class: "mono", text: "python3 saakshi_relay.py --once" }), ".") : null));
+        a.behind ? h("div", { class: "muted" }, CLOUD ? `${a.behind} newer records go into the next automatic anchor.`
+          : `${a.behind} newer signed records aren't anchored yet. `, CLOUD ? null : "Run ",
+          CLOUD ? null : h("code", { class: "mono", text: "python3 saakshi_relay.py --once" }), CLOUD ? null : ".") : null));
     } else if (a.error && !a.source) rows.push(row("wait", "Polygon couldn't be reached, so the anchor wasn't checked. The checks above still stand."));
+    else if (CLOUD) rows.push(row("wait", "Not anchored on Polygon yet. It happens automatically: every 30 minutes, and straight away after a jolt or a temperature alarm."));
     else rows.push(row("wait", "Nothing from this trip is anchored on Polygon yet. Run ",
       h("code", { class: "mono", text: "python3 saakshi_relay.py --once" })));
     const refresh = h("button", { class: "btn small", type: "button", text: "Check Polygon now" });
@@ -582,7 +584,7 @@
       h("a", { href: `${o.polygon.explorer}/address/${o.polygon.contract}`, target: "_blank", rel: "noopener", text: "SaakshiRegistry contract" }),
       o.polygon.checkedAt ? ` · checked ${ago(o.polygon.checkedAt, o.now)}` : "");
     return h("section", { class: "card panel" }, h("h2", { text: "Integrity" }), ...rows, links,
-      CLOUD ? h("p", { class: "muted", style: "font-size:13px;margin:8px 0 0", text: "The Mac checks Polygon every 5 minutes while it syncs." })
+      CLOUD ? h("p", { class: "muted", style: "font-size:13px;margin:8px 0 0", text: "Anchoring is automatic; this panel re-checks Polygon every minute." })
         : h("div", { style: "margin-top:10px" }, refresh));
   }
 

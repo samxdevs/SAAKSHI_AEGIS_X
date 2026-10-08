@@ -72,6 +72,25 @@ KEY_RE = re.compile(r"04[0-9a-fA-F]{128}")
 GENESIS = bytes(32)
 NO_TEMP = -32768
 F_UNSIGNED = 0x0100
+F_SENSOR_FAIL, F_SHOCK, F_TEMP_MISMATCH, F_SENSOR_CHANGED = 0x0002, 0x0020, 0x0040, 0x0080
+# Moments a buyer or insurer would ask about: anchored straight away instead of waiting for the next batch.
+EVENT_FLAGS = ((F_SHOCK, "a jolt over 1 g"), (F_SENSOR_CHANGED, "the temperature sensor was swapped"),
+               (F_TEMP_MISMATCH, "the thermometers disagree"))
+
+
+def first_event(rows, band):
+    """The first important moment among these new records, as text, or None."""
+    prev_out = None
+    for r in rows:
+        for bit, what in EVENT_FLAGS:
+            if r.flags & bit:
+                return f"{what} (seq {r.seq})"
+        if band and not r.flags & F_SENSOR_FAIL:
+            out = not band[0] <= r.temp_mc / 1000 <= band[1]
+            if out and prev_out is False:                # only the moment it leaves the band, not every record after
+                return f"temperature left {band[0]}-{band[1]} °C: {r.temp_mc / 1000:.2f} °C (seq {r.seq})"
+            prev_out = out
+    return None
 COLUMNS = ["seq", "boot", "uptime_s", "unix_time", "temp_c", "rh_pct", "pressure_hpa", "gas_kohm",
            "rtc_temp_c", "mpu_temp_c", "peak_g", "moves", "sensor_id", "flags", "prev_hash", "hash", "sig"]
 BODY = struct.Struct("<IIIIiiiihhHHIH32s")          # the firmware's Record up to (not incl.) hash
@@ -515,7 +534,8 @@ def run_relay(args, nk, pg, watch):
         say("  low on test POL: get more free at https://faucet.polygon.technology (pick Amoy)")
     posted = load_json(POSTED_FILE, [])
     anchored, seen = set(), 0                  # every head of this node on-chain, read incrementally
-    last_post, last_err = {}, {}
+    last_post, last_err, last_event = {}, {}, {}
+    band = load_json(CONFIG_FILE, {}).get("range")              # set with --publish --range 2,8
     while True:
         try:
             new = pg.heads(nk, seen)
@@ -548,13 +568,17 @@ def run_relay(args, nk, pg, watch):
                     continue
                 last_i = max((by_hash[h] for h in anchored if h in by_hash), default=-1)
                 waiting = covered - 1 - last_i
-                if watch and waiting < args.min_records and \
+                event = None
+                if watch and args.event_gap > 0 and time.time() - last_event.get(chain, 0) >= args.event_gap:
+                    event = first_event(rows[last_i + 1:covered], band)
+                if watch and not event and waiting < args.min_records and \
                         time.time() - last_post.get(chain, 0) < args.max_wait:
                     continue
                 if pg.stamp(head.hash)["anchored"]:    # another relay got there first: fine
                     anchored.add(head.hash)
                     continue
-                say(f"posting chain {chain} head seq {head.seq} (locks in {waiting} new record(s)) ...")
+                say(f"posting chain {chain} head seq {head.seq} (locks in {waiting} new record(s))"
+                    + (f" straight away: {event}" if event else "") + " ...")
                 try:
                     txh, block = pg.submit(nk, head)
                 except Exception as e:
@@ -568,6 +592,8 @@ def run_relay(args, nk, pg, watch):
                                "block": block, "time": int(time.time())})
                 save_json(POSTED_FILE, posted)
                 last_post[chain] = time.time()
+                if event:
+                    last_event[chain] = time.time()
                 last_err.pop(chain, None)
                 say(f"✓ anchored in block {block}: {EXPLORER}/tx/{txh}")
             except Bad as e:
@@ -800,6 +826,9 @@ def main():
     ap.add_argument("--min-records", type=int, default=50, help="keep running: post at this many new records")
     ap.add_argument("--max-wait", type=int, default=900, help="keep running: or after this many seconds")
     ap.add_argument("--poll", type=int, default=20, help="keep running: look for new records this often (s)")
+    ap.add_argument("--event-gap", type=int, default=300,
+                    help="keep running: anchor at once after a jolt, sensor swap or temperature alarm, "
+                         "at most this often per trip (s; 0 = off)")
     args = ap.parse_args()
 
     cfg = load_json(CONFIG_FILE, {})

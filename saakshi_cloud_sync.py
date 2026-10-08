@@ -36,7 +36,7 @@ LINK_FILE = CLOUD_DIR / "sync_link.txt"
 SUPABASE_URL = "https://ktmmnaviwneopwfkvnwh.supabase.co"
 SUPABASE_KEY = "sb_publishable_VFfVoVN1tYy5X_YOU2uPaA_1XJHhMjJ"
 READINGS_PER_PUSH = 500
-POLYGON_EVERY = 300                                            # seconds between on-chain checks
+POLYGON_EVERY = 60                                             # seconds between on-chain checks (free reads)
 
 
 def fingerprint(obj):

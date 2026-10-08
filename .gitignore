@@ -27,3 +27,4 @@ saakshi_cloud/state/
 saakshi_cloud/site_build/
 saakshi_cloud/config.json
 .netlify/
+saakshi_logs/
