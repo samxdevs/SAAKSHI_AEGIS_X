@@ -105,6 +105,7 @@
       ["Lowest", s.temp ? `${num(s.temp.min)} °C` : "–"], ["Average", s.temp ? `${num(s.temp.avg)} °C` : "–"],
       ["Highest", s.temp ? `${num(s.temp.max)} °C` : "–"],
       ["Humidity", s.rh ? `${num(s.rh.min, 0)}–${num(s.rh.max, 0)} %` : "–"],
+      ...(s.eth ? [["Ethylene, highest", `${num(s.eth.max, 1)} ppm`, s.eth.max >= 10]] : []),
       ["Jolts over 1 g", s.shocks.toLocaleString(), s.shocks > 0],
     ];
     if (s.restarts) figs.push(["Restarts", s.restarts.toLocaleString(), true]);
@@ -116,6 +117,8 @@
       ${chart(series(recs, "temp"), { unit: "°C", band })}
       <div class="chart-title"><b>Humidity</b></div>
       ${chart(series(recs, "rh"), { unit: "%", small: true, digits: 0 })}
+      ${s.eth ? `<div class="chart-title"><b>Ethylene gas</b></div>
+      ${chart(series(recs.filter((r) => r.eth != null && !(r.flags & C.FLAGS.ETH_WARMUP)), "eth"), { unit: "ppm", small: true, digits: 1 })}` : ""}
       <div class="figs">${figs.map(([k, v, alert]) => `<div class="fig${alert ? " alert" : ""}"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("")}</div>
     </div></section>`;
   }

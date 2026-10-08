@@ -63,7 +63,9 @@ COLUMNS = ["seq", "boot", "uptime_s", "unix_time", "temp_c", "rh_pct", "pressure
 BODY = struct.Struct("<IIIIiiiihhHHIH32s")
 NO_TEMP = -32768
 F = dict(BOOT=0x1, SENSOR_FAIL=0x2, NO_TIME=0x4, CLOCK_SET=0x8, MOTION=0x10, SHOCK=0x20,
-         TEMP_MISMATCH=0x40, SENSOR_CHANGED=0x80, UNSIGNED=0x100, RTC_FAIL=0x200, MPU_FAIL=0x400)
+         TEMP_MISMATCH=0x40, SENSOR_CHANGED=0x80, UNSIGNED=0x100, RTC_FAIL=0x200, MPU_FAIL=0x400,
+         LID_OPEN=0x800, ETHYLENE=0x1000, ETH_NONE=0x2000, ETH_WARMUP=0x4000)
+ETH_ALERT_PPM = 10      # ME3-C2H4: 0.5 ppm resolution, zero drifts up to 10 ppm - a build-up alarm, not trace levels
 GENESIS = bytes(32)
 
 try:
@@ -149,6 +151,8 @@ def parse_row(cells):
         "gas": gas / 1000, "rtc": None if rtc == NO_TEMP else rtc / 100,
         "mpu": None if mpu == NO_TEMP else mpu / 100, "peak": peak / 1000, "moves": moves,
         "sid": sid, "flags": flags, "prev": prev, "hash": h, "sig": sig, "body": body,
+        # firmware v8: the uptime field holds ethylene in ppb when the ETHYLENE flag is set
+        "eth": up / 1000 if flags & F["ETHYLENE"] and not flags & F["ETH_NONE"] else None,
     }
 
 
@@ -480,6 +484,16 @@ class Store:
                 group = []
             if r is not None:
                 group.append(r)
+        eth = [r for r in rows if r["eth"] is not None and not r["flags"] & F["ETH_WARMUP"]]
+        high = [r["seq"] for r in eth if r["eth"] >= ETH_ALERT_PPM]
+        by_seq = {r["seq"]: r for r in eth}
+        for a, b in ranges(high):
+            if b - a + 1 >= 3:                        # three readings in a row: not a one-off blip
+                top = max((by_seq[s] for s in range(a, b + 1) if s in by_seq), key=lambda x: x["eth"])
+                add("ethylene", "serious" if top["eth"] >= 50 else "warning", by_seq[a],
+                    f"Ethylene build-up, up to {top['eth']:.1f} ppm",
+                    f"Records #{a}–#{b}. Ripening produce gives off ethylene and speeds up ripening of the rest; "
+                    "check ventilation and what is stored nearby. (Hydrogen also registers on this sensor.)", b)
         for r in rows:
             if r["flags"] & F["SENSOR_CHANGED"]:
                 add("sensor", "critical", r, "Temperature sensor swapped",
@@ -599,7 +613,11 @@ def summarise(rows, s):
            "unsigned": sum(1 for r in rows if r["flags"] & F["UNSIGNED"]),
            "noTime": sum(1 for r in rows if not r["t"]),
            "sensorFail": len(rows) - len(good),
-           "mpuMissing": bool(rows) and all(r["flags"] & F["MPU_FAIL"] for r in rows[-20:])}
+           "mpuMissing": bool(rows) and all(r["flags"] & F["MPU_FAIL"] for r in rows[-20:]),
+           "eth": st([r["eth"] for r in rows if r["eth"] is not None and not r["flags"] & F["ETH_WARMUP"]]),
+           # none: no v8 records or no sensor; warmup: first 48 h powered; ok: settled readings
+           "ethState": ("ok" if rows and rows[-1]["eth"] is not None and not rows[-1]["flags"] & F["ETH_WARMUP"]
+                        else "warmup" if rows and rows[-1]["eth"] is not None else "none")}
     if s["lo"] is not None and s["hi"] is not None and good:
         step = interval_of(rows)
         out_n, secs = 0, 0
@@ -627,12 +645,17 @@ def buckets(rows, n=360):
             for k in ("temp", "rh"):
                 v = [r[k] for r in good]
                 b[k] = [round(min(v), 3), round(sum(v) / len(v), 3), round(max(v), 3)]
+        e = [r["eth"] for r in part if r["eth"] is not None]
+        if e:
+            b["eth"] = [round(min(e), 3), round(sum(e) / len(e), 3), round(max(e), 3)]
+            if any(r["flags"] & F["ETH_WARMUP"] for r in part):
+                b["ethWarm"] = True
         out.append(b)
     return out
 
 
 def last_reading(r):
-    return {k: r[k] for k in ("seq", "t", "temp", "rh", "press", "gas", "rtc", "mpu", "peak", "moves", "flags")}
+    return {k: r[k] for k in ("seq", "t", "temp", "rh", "press", "gas", "rtc", "mpu", "peak", "moves", "flags", "eth")}
 
 
 def overview(store):

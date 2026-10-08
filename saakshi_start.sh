@@ -17,10 +17,13 @@ if ! $PY -c "$NEED" 2>/dev/null; then
 fi
 
 # Never two of anything: two ledgers would store every record twice, two brokers can't share port 8883.
-for part in saakshi_broker/mosquitto.conf saakshi_ledger.py saakshi_relay.py saakshi_cloud_sync.py; do
+for part in "mosquitto -c .*saakshi_broker/mosquitto.conf" "python[0-9.]* -u saakshi_ledger.py" \
+            "python[0-9.]* -u saakshi_relay.py" "python[0-9.]* -u saakshi_cloud_sync.py" \
+            "python[0-9.]* saakshi_ledger.py" "python[0-9.]* saakshi_relay.py" "python[0-9.]* saakshi_cloud_sync.py"; do
   if pgrep -f "$part" >/dev/null; then
-    echo "✗ already running: $part"
-    echo "  Stop it first (Ctrl+C in its window, or:  pkill -f $part ), then run this again."
+    name=$(echo "$part" | sed -E 's/.* (-u )?//; s/\.\*//')
+    echo "✗ already running: $name"
+    echo "  Stop it first (Ctrl+C in its window, or:  pkill -f $name ), then run this again."
     exit 1
   fi
 done
@@ -50,17 +53,18 @@ stop() {
   echo "stopped. The board keeps logging and signing; its records come in when you start again."
   exit 0
 }
-trap stop INT TERM
+trap stop INT TERM HUP                 # Ctrl+C, a kill, or closing the Terminal window
+trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null' EXIT   # and never leave the four running alone
 
 echo "SAAKSHI starting on ${IP:-this Mac} ..."
 start broker $PY -u saakshi_broker.py run
 sleep 2
 start ledger $PY -u saakshi_ledger.py --tls
-start relay  $PY -u saakshi_relay.py --min-records 180 --max-wait 1800 --poll 30 --event-gap 300
+start relay  $PY -u saakshi_relay.py --min-records 180 --max-wait 1800 --poll 30 --event-gap 900
 start sync   $PY -u saakshi_cloud_sync.py
 echo "  broker   encrypted MQTT on port 8883"
 echo "  ledger   checks every record and chip signature"
-echo "  relay    anchors on Polygon automatically (30 min, or at once on a jolt / alarm)"
+echo "  relay    anchors on Polygon automatically (every 30 min; at once on a jolt / alarm, at most every 15 min)"
 echo "  sync     keeps https://saakshi-aegisx.netlify.app/app live"
 echo "Ctrl+C stops all four. Full logs: saakshi_logs/"
 echo

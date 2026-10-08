@@ -485,7 +485,8 @@
 
   // ---------------------------------------------------------------- node / trip
   const FLAG_NAMES = [[0x20, "SHOCK", 1], [0x80, "SENSOR SWAP", 1], [0x40, "MISMATCH", 1], [0x2, "SENSOR FAIL", 1],
-    [0x100, "UNSIGNED", 0], [0x1, "BOOT", 0], [0x4, "NO TIME", 0], [0x400, "MPU FAIL", 0], [0x200, "RTC FAIL", 0]];
+    [0x100, "UNSIGNED", 0], [0x1, "BOOT", 0], [0x4, "NO TIME", 0], [0x400, "MPU FAIL", 0], [0x200, "RTC FAIL", 0],
+    [0x4000, "C₂H₄ WARM-UP", 0]];
 
   async function viewNode(nodeId, chain) {
     const o = await getOverview();
@@ -526,7 +527,10 @@
         h("div", { class: "chart-head" }, h("h2", { text: "Ethylene gas" })),
         // Firmware v8 adds the ME3-C2H4 reading; until then there is nothing to draw, so say so plainly.
         v.series.some((b) => b.eth) ? lineChart(v.series, "eth", { title: "Ethylene gas", unit: "ppm", digits: 1, height: 150 })
-          : h("p", { class: "muted", text: "Sensor not connected." })),
+          : h("p", { class: "muted", text: "Sensor not connected." }),
+        v.series.some((b) => b.eth) && st.ethState === "warmup" ? h("p", { class: "chart-note",
+          text: "Warming up: the sensor needs 48 hours powered before its readings settle. Until then they aren't used for alerts." }) : null,
+        v.series.some((b) => b.eth) && st.ethState === "none" ? h("p", { class: "chart-note", text: "Sensor not connected right now." }) : null),
       h("section", { class: "card" },
         h("div", { class: "chart-head" }, h("h2", { text: "Jolts" }), h("div", { class: "legend" },
           h("span", { text: "biggest knock in each step" }))),
@@ -658,11 +662,12 @@
     const flags = (fl) => FLAG_NAMES.filter(([b]) => fl & b).map(([, name, hot]) => h("span", { class: `flag${hot ? " hot" : ""}`, text: name }));
     return h("section", { class: "card" }, h("h2", { text: "Latest readings" }),
       h("div", { class: "table-wrap" }, h("table", {},
-        h("thead", {}, h("tr", {}, ["Record", "Time", "Temp °C", "RH %", "Pressure hPa", "Gas kΩ", "Jolt g", "Flags"].map((t) => h("th", { scope: "col", text: t })))),
+        h("thead", {}, h("tr", {}, ["Record", "Time", "Temp °C", "RH %", "Pressure hPa", "Gas kΩ", "C₂H₄ ppm", "Jolt g", "Flags"].map((t) => h("th", { scope: "col", text: t })))),
         h("tbody", {}, rows.map((r) => h("tr", {},
           h("td", { text: `#${r.seq}` }), h("td", { text: r.t ? when(r.t, { second: "2-digit" }) : "no time" }),
           h("td", { text: r.flags & 2 ? "–" : num(r.temp, 2) }), h("td", { text: r.flags & 2 ? "–" : num(r.rh, 1) }),
           h("td", { text: r.flags & 2 ? "–" : num(r.press, 1) }), h("td", { text: r.flags & 2 ? "–" : num(r.gas, 1) }),
+          h("td", { text: r.eth == null ? "–" : num(r.eth, 1) }),
           h("td", { text: r.flags & 0x400 ? "–" : num(r.peak, 2) }), h("td", { class: "wrap" }, flags(r.flags))))))));
   }
 

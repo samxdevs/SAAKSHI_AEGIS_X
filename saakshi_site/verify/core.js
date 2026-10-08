@@ -11,7 +11,8 @@
   const FLAGS = {
     BOOT: 0x0001, SENSOR_FAIL: 0x0002, NO_TIME: 0x0004, CLOCK_SET: 0x0008, MOTION: 0x0010,
     SHOCK: 0x0020, TEMP_MISMATCH: 0x0040, SENSOR_CHANGED: 0x0080, UNSIGNED: 0x0100,
-    RTC_FAIL: 0x0200, MPU_FAIL: 0x0400,
+    RTC_FAIL: 0x0200, MPU_FAIL: 0x0400, LID_OPEN: 0x0800,
+    ETHYLENE: 0x1000, ETH_NONE: 0x2000, ETH_WARMUP: 0x4000,   // firmware v8: bytes 8-11 hold ethylene in ppb
   };
   const BODY = 78;
   const SEL = {                    // first 4 bytes of keccak256(signature); match the deployed bytecode
@@ -50,7 +51,7 @@
     const rtc = v.getInt16(32, true), mpu = v.getInt16(34, true);
     return {
       seq: v.getUint32(0, true), boot: v.getUint32(4, true), uptime: v.getUint32(8, true),
-      time: v.getUint32(12, true),
+      time: v.getUint32(12, true), eth: null,
       temp: v.getInt32(16, true) / 1000, rh: v.getInt32(20, true) / 1000,
       pressure: v.getInt32(24, true) / 100, gas: v.getInt32(28, true) / 1000,
       rtcTemp: rtc === NO_TEMP ? null : rtc / 100, mpuTemp: mpu === NO_TEMP ? null : mpu / 100,
@@ -58,6 +59,11 @@
       sensorId: v.getUint32(40, true), flags: v.getUint16(44, true),
       prev: b.subarray(46, 78),
     };
+  }
+  // Firmware v8 puts ethylene (ppb) where older records kept uptime; the ETHYLENE flag says which.
+  function withEthylene(r) {
+    if ((r.flags & FLAGS.ETHYLENE) && !(r.flags & FLAGS.ETH_NONE)) r.eth = r.uptime / 1000;
+    return r;
   }
 
   // ---------- Polygon (read-only JSON-RPC) ----------
@@ -146,7 +152,7 @@
         for (let i = 0; i < n && !R.problem; i++) {
           const body = plain.subarray(i * BODY, i * BODY + BODY);
           const h = await sha256(body);
-          const r = parseRecord(body);
+          const r = withEthylene(parseRecord(body));
           r.hash = hashHex[i];
           if (!same(h, hashes.subarray(i * 32, i * 32 + 32)))
             { fail("hashes", `Record #${r.seq} was changed after it was recorded.`, { seq: r.seq }); break; }
@@ -219,6 +225,7 @@
       avg: arr.reduce((a, b) => a + b, 0) / arr.length } : null;
     s.temp = stat(good.map((r) => r.temp));
     s.rh = stat(good.map((r) => r.rh));
+    s.eth = stat(recs.filter((r) => r.eth != null && !(r.flags & FLAGS.ETH_WARMUP)).map((r) => r.eth));
     s.shocks = recs.filter((r) => r.flags & FLAGS.SHOCK).length;
     s.maxG = recs.length ? Math.max(...recs.map((r) => r.peakG)) : 0;
     s.restarts = recs.filter((r, i) => i > 0 && (r.flags & FLAGS.BOOT)).length;

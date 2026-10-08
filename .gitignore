@@ -28,3 +28,5 @@ saakshi_cloud/site_build/
 saakshi_cloud/config.json
 .netlify/
 saakshi_logs/
+**/secrets.h
+**/broker_ca.h

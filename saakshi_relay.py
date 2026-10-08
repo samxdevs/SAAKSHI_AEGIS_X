@@ -535,6 +535,10 @@ def run_relay(args, nk, pg, watch):
     posted = load_json(POSTED_FILE, [])
     anchored, seen = set(), 0                  # every head of this node on-chain, read incrementally
     last_post, last_err, last_event = {}, {}, {}
+    for p in posted:                           # remember across restarts: a restart is not a reason to anchor
+        if isinstance(p, dict) and p.get("chain") and p.get("time"):
+            last_post[p["chain"]] = max(last_post.get(p["chain"], 0), p["time"])
+    last_event.update(last_post)
     band = load_json(CONFIG_FILE, {}).get("range")              # set with --publish --range 2,8
     while True:
         try:
