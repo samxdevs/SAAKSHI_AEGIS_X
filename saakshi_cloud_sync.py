@@ -214,6 +214,8 @@ def main():
         cfg["site_url"] = args.site_url.strip().rstrip("/")
         save_config(cfg)
         say(f"✓ buyer QR links will point to {cfg['site_url'] or '(nothing)'}")
+        if not args.link and not args.once:
+            return 0
     if args.link:
         tok = args.link.strip()
         if not tok.startswith("sync_") or len(tok) < 40:
