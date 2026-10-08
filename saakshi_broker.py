@@ -44,7 +44,7 @@ except ImportError:
 
 HERE = Path(__file__).resolve().parent
 DIR = HERE / "saakshi_broker"
-SKETCH_DIR = HERE / "saakshi_node_v7_1"
+SKETCH_DIR = HERE / "saakshi_node_v8"
 PORT = 8883
 # Valid from 1970 on purpose: a board whose clock is not set yet must still accept the certificate.
 NOT_BEFORE = dt.datetime(1970, 1, 2, tzinfo=dt.timezone.utc)
@@ -250,10 +250,10 @@ def cmd_setup(args):
     copies = write_ca_header(ca_cert.public_bytes(serialization.Encoding.PEM))
     say(f"✓ broker_ca.h written to {copies[-1]}")
     if len(copies) == 1:
-        say("  copy it into the sketch folder saakshi_node_v7_1/ (next to saakshi_node_v7_1.ino)")
+        say("  copy it into the sketch folder saakshi_node_v8/ (next to saakshi_node_v8.ino)")
     say("")
     say("Next:")
-    say("  1. Upload saakshi_node_v7_1 to the board (with secrets.h and broker_ca.h in its folder)")
+    say("  1. Upload saakshi_node_v8 to the board (with secrets.h and broker_ca.h in its folder)")
     say("  2. Start the broker:     python3 saakshi_broker.py run")
     say("  3. Start the ledger:     python3 saakshi_ledger.py --tls")
     board_steps(creds, ip)
