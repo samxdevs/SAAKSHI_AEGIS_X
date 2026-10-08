@@ -183,14 +183,35 @@
   }
   window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); });
 
+  const busy = () => {
+    const a = document.activeElement;
+    return (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) || document.hidden;   // never wipe what someone is typing
+  };
   function startPolling() {
     clearInterval(timer);
-    timer = setInterval(() => {
-      const a = document.activeElement;
-      if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;      // never wipe what someone is typing
-      if (document.hidden) return;
-      render(true);
-    }, 10000);
+    if (CLOUD) {
+      // Online: ask every 3 s whether the Mac pushed anything new (a few bytes) and redraw only then;
+      // once a minute anyway, so "x min ago" and Online/Offline stay current.
+      let seen = null, drawn = Date.now();
+      timer = setInterval(async () => {
+        if (busy()) return;
+        let fp = null;
+        try { fp = await CLOUD.pulse(); } catch (e) { /* offline for a moment: try again next tick */ }
+        const changed = fp && seen !== null && fp !== seen;
+        if (fp) seen = fp;
+        if (changed || Date.now() - drawn > 60000) { drawn = Date.now(); render(true); }
+      }, 3000);
+      return;
+    }
+    timer = setInterval(() => { if (!busy()) render(true); }, 10000);
+  }
+  // Online only: shows whether the Mac is pushing right now.
+  function liveBadge(o) {
+    if (!o.cloud) return null;
+    const live = o.syncedAt && o.now - o.syncedAt < 60;
+    return h("span", { class: `state ${live ? "online" : "offline"} live`,
+      title: live ? "New readings appear here by themselves within seconds" : "The Mac isn't sending updates right now" },
+      h("i"), live ? "Live" : "Updates paused");
   }
 
   async function boot() {
@@ -256,7 +277,7 @@
       h("span", {}, h("b", { text: o.nodes.length }), o.nodes.length === 1 ? " node" : " nodes"),
       h("span", {}, h("b", { text: online }), " online"),
       h("span", {}, h("b", { text: o.openAlerts }), o.openAlerts === 1 ? " open alert" : " open alerts"),
-      h("span", {}, o.polygon.error ? "Polygon not reachable" : (o.polygon.checkedAt ? `Polygon checked ${ago(o.polygon.checkedAt, o.now)}` : "Polygon not checked yet"))))];
+      h("span", {}, o.polygon.error ? "Polygon not reachable" : (o.polygon.checkedAt ? `Polygon checked ${ago(o.polygon.checkedAt, o.now)}` : "Polygon not checked yet"))), liveBadge(o))];
     if (!o.crypto) out.push(h("div", { class: "banner info" }, icon("info"), h("div", {},
       "Chip signatures were checked by the ledger but aren't re-checked here. To re-check them on this Mac too, run ",
       h("code", { class: "mono", text: "python3 -m pip install cryptography" }), " and restart the dashboard.")));
@@ -525,7 +546,7 @@
 
     $view.replaceChildren(
       h("div", { class: "crumbs" }, h("a", { href: "#/nodes", text: "← All nodes" })),
-      h("div", { class: "titlebar" }, h("h1", { text: displayName(n) }), stateBadge(n.status)),
+      h("div", { class: "titlebar" }, h("h1", { text: displayName(n) }), stateBadge(n.status), liveBadge(o)),
       h("p", { class: "muted" }, n.name ? `${n.node} · ` : "", `Last heard ${ago(n.status.lastHeard, o.now)}`,
         n.status.interval ? ` · logs every ${dur(n.status.interval)}` : ""),
       h("div", { class: "filters" }, h("label", {}, "Trip", tripSel), csv),

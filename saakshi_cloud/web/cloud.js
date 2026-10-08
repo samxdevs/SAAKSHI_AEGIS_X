@@ -191,5 +191,13 @@
     return lines.join("\n") + "\n";
   }
 
-  window.SaakshiCloud = { api, exportCsv };
+  // A few bytes, polled every few seconds: the Mac's fingerprint of what it last pushed.
+  // app.js redraws only when it changes, so the page is live without downloading everything each time.
+  async function pulse() {
+    if (!ctx || !ctx.org) return null;
+    const r = await client().from("sync_status").select("fp:data->>fp,synced_at").maybeSingle();
+    return r.error || !r.data ? null : r.data.fp || r.data.synced_at;
+  }
+
+  window.SaakshiCloud = { api, exportCsv, pulse };
 })();

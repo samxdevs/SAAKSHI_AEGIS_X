@@ -4,7 +4,7 @@ SAAKSHI cloud sync: puts the Mac's verified view of the ledger on the online das
 
   python3 saakshi_cloud_sync.py --link sync_...      once: connect this Mac (the code is on the
                                                      online dashboard under Team -> Connect this Mac)
-  python3 saakshi_cloud_sync.py                      keep syncing (every 30 s; Ctrl+C to stop)
+  python3 saakshi_cloud_sync.py                      keep syncing (every 10 s; Ctrl+C to stop)
   python3 saakshi_cloud_sync.py --once               one sync, then stop
   python3 saakshi_cloud_sync.py --site-url https://<site>.netlify.app    where the buyer QR should point
 
@@ -17,6 +17,7 @@ The sync link is a password for ONE organisation's data. It lives in saakshi_clo
 """
 from pathlib import Path
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -36,6 +37,10 @@ SUPABASE_URL = "https://ktmmnaviwneopwfkvnwh.supabase.co"
 SUPABASE_KEY = "sb_publishable_VFfVoVN1tYy5X_YOU2uPaA_1XJHhMjJ"
 READINGS_PER_PUSH = 500
 POLYGON_EVERY = 300                                            # seconds between on-chain checks
+
+
+def fingerprint(obj):
+    return hashlib.sha1(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def say(msg):
@@ -150,7 +155,8 @@ def sync_once(store, tok, cfg, state):
             say(f"⚠ {n['node']} belongs to another organisation online - not uploaded from this Mac.")
     nodes = [n for n in ov["nodes"] if n["node"] not in taken]
     mine = {n["node"] for n in nodes}
-    trips = []
+    trips, sent_fps = [], state.setdefault("trip_fps", {})
+    now_fps = {}
     for (node, chain) in sorted(store.trips):
         if node not in mine:
             continue
@@ -159,14 +165,19 @@ def sync_once(store, tok, cfg, state):
             continue
         v.pop("alerts", None)                                    # the alerts table has them
         v["share"] = share_for(store, node, chain, cfg["site_url"])
-        trips.append({"node": node, "chain": chain, "view": v})
+        now_fps[(node, chain)] = fingerprint(v)
+        if sent_fps.get((node, chain)) != now_fps[(node, chain)]:   # only trips that changed go up again
+            trips.append({"node": node, "chain": chain, "view": v})
     alerts = [{k: a[k] for k in a if k != "acked"} for a in store.all_alerts()
               if a.get("node") is None or a.get("node") in mine]
-    status = {"polygon": ov["polygon"], "crypto": ov["crypto"], "siteUrl": cfg["site_url"] or None,
-              "version": 1}
+    # The website polls this fingerprint every few seconds and redraws only when it changes.
+    status = {"polygon": ov["polygon"], "crypto": ov["crypto"], "siteUrl": cfg["site_url"] or None, "version": 1,
+              "fp": fingerprint([nodes, sorted(now_fps.items(), key=str), alerts])}
     res = rpc("sync_push", {"p_token": tok, "p": {
         "nodes": [{"node": n["node"], "view": n} for n in nodes], "trips": trips,
         "alerts": alerts, "status": status}})
+    sent_fps.clear()
+    sent_fps.update(now_fps)                                     # remembered only once Supabase has them
 
     # readings: only rows the Mac has verified, and only the ones not online yet
     sent = 0
@@ -202,7 +213,7 @@ def main():
     ap.add_argument("--link", metavar="CODE", help="connect this Mac (code from Team -> Connect this Mac)")
     ap.add_argument("--site-url", help="the deployed site, e.g. https://saakshi-aegisx.netlify.app (saved)")
     ap.add_argument("--once", action="store_true", help="sync once and stop")
-    ap.add_argument("--every", type=float, default=30, help="seconds between syncs (default 30)")
+    ap.add_argument("--every", type=float, default=10, help="seconds between syncs (default 10, like the board)")
     ap.add_argument("--ledger", default=str(HERE / "saakshi_ledger"))
     ap.add_argument("--relay", default=str(HERE / "saakshi_relay"))
     ap.add_argument("--site", default=str(HERE / "saakshi_site"))
@@ -250,12 +261,14 @@ def main():
                 say(f"✓ synced to \"{pull['org']['name']}\": {note}" + (f", {sent} new reading(s)" if sent else ""))
             last_note, failing = note, False
         except SyncError as e:
+            state.pop("trip_fps", None)                          # resend everything once it's back
             if "doesn't recognise" in str(e):
                 sys.exit(f"✗ {e}")
             if not failing:
                 say(f"✗ {e} - will keep trying")
             failing = True
         except Exception as e:                                   # sync must keep running
+            state.pop("trip_fps", None)
             say(f"✗ {type(e).__name__}: {e} - will keep trying")
             failing = True
         if args.once:
