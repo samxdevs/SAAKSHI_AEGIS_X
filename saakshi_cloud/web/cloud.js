@@ -27,9 +27,17 @@
   const epoch = (iso) => (iso ? Math.floor(new Date(iso).getTime() / 1000) : null);
   const now = () => Math.floor(Date.now() / 1000);
 
+  // Not logged in: if an organisation has switched on public view, the visitor gets its dashboard,
+  // read-only, through the public_* functions (they return only dashboard data, never write).
   async function context() {
     const { data } = await client().auth.getSession();
-    if (!data.session) { ctx = null; return null; }
+    if (!data.session) {
+      ctx = null;
+      const pub = await client().rpc("public_overview");
+      if (!pub.error && pub.data) ctx = { visitor: true, pub: pub.data,
+        user: { name: "View only", email: "", role: "visitor", staff: false, visitor: true }, org: { name: pub.data.org } };
+      return ctx;
+    }
     ctx = check(await client().rpc("my_context"));
     if (ctx) ctx.uid = data.session.user.id;
     return ctx;
@@ -39,18 +47,32 @@
     if (!ctx.org) throw fail("Join or start an organisation first.");
     return ctx;
   }
+  async function needMember() {
+    const x = await needLogin();
+    if (x.visitor) throw fail("This is a view-only dashboard. Log in to make changes.");
+    return x;
+  }
 
   // ---------------------------------------------------------------- the shared picture
   const RANK = { critical: 0, serious: 1, warning: 2, info: 3 };
   const DEFAULTS = { name: "", lo: null, hi: null, minutes: 15, offlineMinutes: 0 };
 
   async function load() {
-    await needLogin();
+    const x = await needLogin();
     const c = client();
-    const [views, nodes, alerts, acks, status] = await Promise.all([
-      c.from("node_views").select("node,data"), c.from("nodes").select("node,settings"),
-      c.from("alerts").select("id,node,data"), c.from("alert_acks").select("alert_id,by_name,at"),
-      c.from("sync_status").select("data,synced_at").maybeSingle()]);
+    let views, nodes, alerts, acks, status;
+    if (x.visitor) {                                   // fresh copy each time, same shape as the tables
+      const pub = check(await c.rpc("public_overview"));
+      if (!pub) throw fail("This dashboard isn't public any more. Log in to see it.", 401);
+      const ok = (data) => ({ data, error: null });
+      [views, nodes, alerts, acks, status] = [ok(pub.views), ok(pub.nodes), ok(pub.alerts.map((d) => ({ data: d }))),
+        ok(pub.acks), ok(pub.status)];
+    } else {
+      [views, nodes, alerts, acks, status] = await Promise.all([
+        c.from("node_views").select("node,data"), c.from("nodes").select("node,settings"),
+        c.from("alerts").select("id,node,data"), c.from("alert_acks").select("alert_id,by_name,at"),
+        c.from("sync_status").select("data,synced_at").maybeSingle()]);
+    }
     const settings = Object.fromEntries(check(nodes).map((r) => [r.node, r.settings || {}]));
     const ackMap = Object.fromEntries(check(acks).map((a) => [a.alert_id, { by: a.by_name, at: epoch(a.at) }]));
     const st = check(status);
@@ -91,11 +113,13 @@
   }
 
   async function trip(node, chain) {
-    const [pic, res] = await Promise.all([load(),
-      client().from("trip_views").select("data").eq("node", node).eq("chain", chain).maybeSingle()]);
+    const x = await needLogin();
+    const [pic, res] = await Promise.all([load(), x.visitor
+      ? client().rpc("public_trip", { p_node: node, p_chain: chain })
+      : client().from("trip_views").select("data").eq("node", node).eq("chain", chain).maybeSingle()]);
     const row = check(res);
     if (!row) throw fail("no such trip");
-    const v = row.data;
+    const v = x.visitor ? row : row.data;
     v.settings = Object.assign({}, DEFAULTS, v.settings, pic.settings[node]);
     v.alerts = pic.alerts.filter((a) => a.node === node && (a.chain === chain || a.chain == null));
     return v;
@@ -128,7 +152,7 @@
     switch (p) {
       case "/api/orders":
         if (body !== undefined) return sendOrder(body);
-        await needLogin(); return { orders: await orders() };
+        await needMember(); return { orders: await orders() };
       case "/api/me": {
         const x = await context();
         return { user: x ? Object.assign({}, x.user, { org: x.org }) : null, firstUser: false, needsSetupCode: false };
@@ -156,23 +180,28 @@
       case "/api/alerts": return { alerts: (await load()).alerts };
       case "/api/trip": return trip(q.get("node"), q.get("chain"));
       case "/api/alerts/ack": {
-        const x = await needLogin();
+        const x = await needMember();
         if (body.undo) check(await c().from("alert_acks").delete().eq("alert_id", body.id));
         else check(await c().from("alert_acks").insert({ org_id: x.org.id, alert_id: body.id, by_user: x.uid, by_name: x.user.name }));
         return { ok: true };
       }
       case "/api/nodes/settings": {
-        await needLogin();
+        await needMember();
         const s = Object.assign({}, body); delete s.node;
         return { ok: true, settings: check(await c().rpc("save_node_settings", { p_node: body.node, p_settings: s })) };
       }
       case "/api/anchors/refresh": return { ok: true };       // the Mac checks Polygon every 5 minutes
       case "/api/orders/status":
-        await needLogin(); check(await c().from("orders").update({ status: body.status }).eq("id", body.id)); return { ok: true };
-      case "/api/team": await needLogin(); return check(await c().rpc("team"));
-      case "/api/team/invite": await needLogin(); return { invite: check(await c().rpc("rotate_invite")) };
-      case "/api/sync/link": await needLogin(); return { code: check(await c().rpc("create_sync_link")) };
-      case "/api/sync/revoke": await needLogin(); return { count: check(await c().rpc("revoke_sync_links")) };
+        await needMember(); check(await c().from("orders").update({ status: body.status }).eq("id", body.id)); return { ok: true };
+      case "/api/team": await needMember(); return check(await c().rpc("team"));
+      case "/api/team/invite": await needMember(); return { invite: check(await c().rpc("rotate_invite")) };
+      case "/api/sync/link": await needMember(); return { code: check(await c().rpc("create_sync_link")) };
+      case "/api/public": {
+        await needMember();
+        if (body !== undefined) return { on: check(await c().rpc("set_public_view", { p_on: !!body.on })) };
+        return { on: check(await c().rpc("public_view_on")) };
+      }
+      case "/api/sync/revoke": await needMember(); return { count: check(await c().rpc("revoke_sync_links")) };
       default: throw fail("not found");
     }
   }
@@ -180,7 +209,7 @@
   // The exact ledger file: header + the verified lines the Mac uploaded, in order.
   const HEADER = "seq,boot,uptime_s,unix_time,temp_c,rh_pct,pressure_hpa,gas_kohm,rtc_temp_c,mpu_temp_c,peak_g,moves,sensor_id,flags,prev_hash,hash,sig";
   async function exportCsv(node, chain) {
-    await needLogin();
+    await needMember();
     const lines = [HEADER];
     for (let from = 0; ; from += 1000) {
       const rows = check(await client().from("readings").select("line").eq("node", node).eq("chain", chain)
@@ -195,6 +224,7 @@
   // app.js redraws only when it changes, so the page is live without downloading everything each time.
   async function pulse() {
     if (!ctx || !ctx.org) return null;
+    if (ctx.visitor) { const v = await client().rpc("public_pulse"); return v.error ? null : v.data; }
     const r = await client().from("sync_status").select("fp:data->>fp,synced_at").maybeSingle();
     return r.error || !r.data ? null : r.data.fp || r.data.synced_at;
   }

@@ -272,3 +272,5 @@ svg.spark { display: block; width: 100%; height: 30px; }
 .anchors ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
 .anchors li { display: grid; grid-template-columns: 4.5em 1fr auto; gap: 8px; align-items: baseline; }
 .chart-head .more { margin-left: auto; }
+.banner svg { width: 20px; height: 20px; flex: none; margin-top: 2px; }
+.banner.info svg { color: var(--cold-ink); } .banner.warning svg { color: var(--warning-ink); } .banner.critical svg { color: var(--critical-ink); }

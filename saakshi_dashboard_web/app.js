@@ -109,22 +109,26 @@
   // On the Mac the admin handles node requests; online, only AEGIS_X staff see them (not every customer's admin).
   const canSeeRequests = () => !!me && (CLOUD ? !!me.staff : me.role === "admin");
 
+  // Online, a visitor without a login may see one organisation's dashboard, read-only.
+  const visitor = () => !!(me && me.visitor);
   function showShell() {
     document.getElementById("top").hidden = false;
     document.getElementById("who").textContent = me.name;
+    document.getElementById("logout").textContent = visitor() ? "Log in" : "Log out";
   }
 
   document.getElementById("logout").addEventListener("click", async () => {
+    if (visitor()) { clearInterval(timer); return showAuth("login"); }
     try { await api("/api/logout", {}); } catch (e) { /* ignore */ }
-    me = null; showAuth();
+    me = null; boot().catch(() => showAuth());
   });
 
   // ---------------------------------------------------------------- auth
   async function showAuth(mode) {
     clearInterval(timer);
     document.getElementById("top").hidden = true;
-    let first = false, needsCode = false;
-    try { const m = await api("/api/me"); first = m.firstUser; needsCode = m.needsSetupCode; } catch (e) { /* ignore */ }
+    let first = false, needsCode = false, canView = false;
+    try { const m = await api("/api/me"); first = m.firstUser; needsCode = m.needsSetupCode; canView = !!(m.user && m.user.visitor); } catch (e) { /* ignore */ }
     mode = first ? "signup" : (mode || "login");
     const err = h("p", { class: "err", role: "alert" });
     const f = {};
@@ -159,7 +163,8 @@
       form,
       first ? null : h("p", { class: "switch" }, mode === "signup" ? "Already have an account? " : "New to this team? ",
         h("button", { type: "button", text: mode === "signup" ? "Log in" : "Create an account",
-          onclick: () => showAuth(mode === "signup" ? "login" : "signup") }))));
+          onclick: () => showAuth(mode === "signup" ? "login" : "signup") })),
+      canView ? h("p", { class: "switch" }, h("button", { type: "button", text: "← Back to the view-only dashboard", onclick: () => boot() })) : null));
     (f.name || f.email).focus();
   }
 
@@ -273,11 +278,15 @@
   async function viewNodes() {
     const o = await getOverview();
     const online = o.nodes.filter((n) => n.status.state === "online").length;
-    const out = [pageHead("Your nodes", "Every reading is signed by the node's security chip and checked again before it's shown.", liveBadge(o))];
+    const out = [pageHead(visitor() ? "SAAKSHI nodes" : "Your nodes", "Every reading is signed by the node's security chip and checked again before it's shown.", liveBadge(o))];
+    if (visitor()) out.push(viewOnlyBanner());
     if (!o.crypto) out.push(h("div", { class: "banner info" }, icon("info"), h("div", {},
       "Chip signatures were checked by the ledger but aren't re-checked here. To re-check them on this Mac too, run ",
       h("code", { class: "mono", text: "python3 -m pip install cryptography" }), " and restart the dashboard.")));
-    if (o.cloud && o.syncedAt && o.now - o.syncedAt > 180) out.push(h("div", { class: "banner warning" }, icon("warning"), h("div", {},
+    if (o.cloud && o.syncedAt && o.now - o.syncedAt > 180) out.push(visitor()
+      ? h("div", { class: "banner info" }, icon("info"), h("div", {}, h("b", { text: `Showing the data as of ${ago(o.syncedAt, o.now)}. ` }),
+          "The nodes aren't sending right now; everything recorded so far, and its Polygon anchors, is here."))
+      : h("div", { class: "banner warning" }, icon("warning"), h("div", {},
       h("b", { text: `Last update from the Mac ${ago(o.syncedAt, o.now)}. ` }),
       "What you see is as of then. On the Mac that runs the ledger, start ",
       h("code", { class: "mono", text: "bash saakshi_start.sh" }), " for live data.")));
@@ -645,7 +654,7 @@
     const lower = h("div", { class: "lower" },
       alertsCard(v.alerts.filter((a) => !a.acked), "Alerts on this trip", true, 4),
       recentCard(v.recent));
-    const side = h("div", { class: "side" }, integrityCard(v, o), shareCard(v), settingsCard(n, v));
+    const side = h("div", { class: "side" }, integrityCard(v, o), shareCard(v), visitor() ? null : settingsCard(n, v));
 
     $view.replaceChildren(
       h("div", { class: "crumbs" }, h("a", { href: "#/nodes", text: "← All nodes" })),
@@ -653,7 +662,7 @@
       h("p", { class: "muted" }, n.name ? `${n.node} · ` : "", `Last heard ${ago(n.status.lastHeard, o.now)}`,
         n.status.interval ? ` · logs every ${dur(n.status.interval)}` : ""),
       nowTiles(v, band),
-      h("div", { class: "filters" }, h("label", {}, "Trip", tripSel), range, csv),
+      h("div", { class: "filters" }, h("label", {}, "Trip", tripSel), range, visitor() ? null : csv),
       kpis,
       h("div", { class: "layout" }, main, side, lower));
   }
@@ -793,7 +802,7 @@
     return h("div", { class: `alert${a.acked ? " acked" : ""}` }, sev(a.severity),
       h("div", {}, h("div", { class: "title" }, title), h("div", { class: "detail", text: a.detail }),
         where.length ? h("div", { class: "where", text: where.join(" · ") }) : null),
-      a.type === "offline" && !a.acked ? h("span") : btn);
+      (a.type === "offline" && !a.acked) || visitor() ? h("span") : btn);
   }
 
   const openLists = new Set();
@@ -842,6 +851,7 @@
     rotate.addEventListener("click", async () => { const j = await api("/api/team/invite", {}); code.textContent = j.invite; });
     $view.replaceChildren(pageHead("Team", CLOUD && r.org ? `Everyone in ${r.org} sees every node of this organisation.` : "Everyone here sees every node on this dashboard."),
       CLOUD ? connectCard(r) : "",
+      CLOUD ? publicCard() : "",
       h("section", { class: "card", style: "margin-bottom:18px" }, h("h2", { text: "Invite code" }),
         h("p", { class: "muted", text: "A teammate needs this code to create an account. Make a new code to stop the old one working." }),
         h("div", { style: "display:flex;gap:14px;align-items:center;flex-wrap:wrap" }, code, rotate)),
@@ -849,6 +859,30 @@
         h("thead", {}, h("tr", {}, ["Name", "Email", "Role", "Joined"].map((t) => h("th", { scope: "col", text: t })))),
         h("tbody", {}, r.users.map((u) => h("tr", {}, h("td", { text: u.name }), h("td", { text: u.email }),
           h("td", { text: u.role === "admin" ? "Admin" : "Member" }), h("td", { text: when(u.created) }))))))));
+  }
+
+  function viewOnlyBanner() {
+    return h("div", { class: "banner info" }, icon("info"), h("div", {},
+      h("b", { text: "View-only dashboard. " }),
+      "Live readings from SAAKSHI nodes, re-checked against each chip's signature and locked on Polygon. ",
+      "Open a node to see its trips, charts and blockchain anchors, or scan its QR code to check a trip on your own phone."));
+  }
+
+  // Online only: let anyone with the link see this organisation's dashboard, read-only.
+  function publicCard() {
+    const out = h("div");
+    const card = h("section", { class: "card", style: "margin-bottom:18px" }, h("h2", { text: "Public view" }),
+      h("p", { class: "muted", text: "When on, anyone opening the dashboard link without logging in sees your nodes, trips, charts, alerts and anchors, read-only. They can't change anything, and they never see your team, codes or requests." }), out);
+    api("/api/public").then(({ on }) => {
+      const btn = h("button", { class: on ? "btn small" : "btn primary small", type: "button", text: on ? "Turn public view off" : "Turn public view on" });
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try { await api("/api/public", { on: !on }); render(true); } catch (x) { out.append(h("p", { class: "err", text: x.message })); btn.disabled = false; }
+      });
+      out.replaceChildren(h("p", {}, h("b", { text: on ? "Public view is ON. " : "Public view is off. " }),
+        on ? `Share ${location.origin}/app` : "Only logged-in team members can see the dashboard."), btn);
+    }).catch((x) => out.replaceChildren(h("p", { class: "muted", text: x.message })));
+    return card;
   }
 
   // Online only: the Mac that runs the ledger pushes its verified view here with a sync code.
