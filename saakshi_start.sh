@@ -69,7 +69,7 @@ echo "  broker   encrypted MQTT on port 8883"
 echo "  ledger   checks every record and chip signature"
 echo "  relay    anchors on Polygon automatically (every 30 min; at once on a jolt / alarm, at most every 15 min)"
 echo "  sync     keeps https://saakshi-aegisx.netlify.app/app live"
-echo "  publish  keeps the buyer's QR page current (after each anchor, and every 10 min)"
+echo "  publish  updates the buyer's QR page after every anchor (locked records only)"
 echo "Ctrl+C stops all five. Full logs: saakshi_logs/"
 echo
 

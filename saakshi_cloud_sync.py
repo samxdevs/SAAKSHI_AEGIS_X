@@ -104,7 +104,7 @@ def save_link(tok):
 
 
 # ---------------------------------------------------------------- building what goes online
-def share_for(store, node, chain, site_url):
+def share_for(store, node, chain, site_url, current=False):
     """Like the Mac dashboard's share box, but pointing at the online site, with the QR drawn here."""
     base = store.share(node, chain)
     keys = D.load_json(store.relay / "view_keys.json", {})
@@ -114,8 +114,10 @@ def share_for(store, node, chain, site_url):
     if not site_url:
         return {"url": None, "published": base.get("published"),
                 "hint": "Tell the Mac where the site is:  python3 saakshi_cloud_sync.py --site-url https://<site>.netlify.app"}
-    url = f"{site_url.rstrip('/')}/verify/?n={node}&c={chain}#k={keys[node]}"
-    return {"url": url, "published": base.get("published"), "qrSvg": D.qr_svg(url)}
+    # The current trip gets the node's own link: it always opens the most recently locked trip, so a
+    # printed or shown QR never lands on an unfinished trip. Older trips keep a link to themselves.
+    url = f"{site_url.rstrip('/')}/verify/?n={node}" + ("" if current else f"&c={chain}") + f"#k={keys[node]}"
+    return {"url": url, "published": base.get("published"), "qrSvg": D.qr_svg(url), "latest": current}
 
 
 def ledger_lines(path, first, last):
@@ -164,7 +166,8 @@ def sync_once(store, tok, cfg, state):
         if not v:
             continue
         v.pop("alerts", None)                                    # the alerts table has them
-        v["share"] = share_for(store, node, chain, cfg["site_url"])
+        current = next((n["currentChain"] for n in nodes if n["node"] == node), None) == chain
+        v["share"] = share_for(store, node, chain, cfg["site_url"], current)
         now_fps[(node, chain)] = fingerprint(v)
         if sent_fps.get((node, chain)) != now_fps[(node, chain)]:   # only trips that changed go up again
             trips.append({"node": node, "chain": chain, "view": v})

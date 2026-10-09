@@ -6,10 +6,9 @@ SAAKSHI auto-publisher: keeps the buyer's QR page current without anyone running
   python3 saakshi_autopublish.py --once     publish and deploy once, then stop
 
 It re-publishes the encrypted trips (saakshi_relay.py --publish) and deploys the site
-(saakshi_cloud/deploy.sh):
-  - within a minute of every new Polygon anchor, so a scan shows the newest locked records, and
-  - every 10 minutes if new records arrived, so a scan shows the newest readings.
-Nothing is done when nothing changed. The QR key is never printed or logged here.
+(saakshi_cloud/deploy.sh) within a minute of every new Polygon anchor. The buyer page holds only
+records that are locked on Polygon, so that is the only time it changes, and every scan, any day,
+reads "Genuine record". The QR key is never printed or logged here.
 """
 from pathlib import Path
 import argparse
@@ -60,7 +59,6 @@ def publish_and_deploy():
 def main():
     ap = argparse.ArgumentParser(description="Keep the buyer's QR page current automatically.")
     ap.add_argument("--once", action="store_true", help="publish and deploy once, then stop")
-    ap.add_argument("--every", type=int, default=600, help="at most this often for new records (s, default 600)")
     ap.add_argument("--poll", type=int, default=60, help="look for changes this often (s, default 60)")
     args = ap.parse_args()
     if not (HERE / ".netlify" / "state.json").exists():
@@ -71,10 +69,9 @@ def main():
     while True:
         fp = fingerprint()
         new_anchor = last_anchor is not None and fp[1] != last_anchor
-        new_data = fp != last_fp
-        due = last_fp is None or new_anchor or (new_data and time.time() - last_pub >= args.every)
+        due = last_fp is None or new_anchor
         if due:
-            why = "starting" if last_fp is None else "new Polygon anchor" if new_anchor else "new records"
+            why = "starting" if last_fp is None else "new Polygon anchor"
             result = publish_and_deploy()
             if result.startswith("✓"):
                 say(f"{result} ({why})")

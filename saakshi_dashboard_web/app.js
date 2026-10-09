@@ -717,13 +717,14 @@
         setTimeout(() => { copy.textContent = "Copy link"; }, 2000);
       });
       body.push(h("div", { class: "qr" }, img, fallback, h("div", { class: "link", text: sh.url }), copy));
+      if (sh.latest) body.push(h("p", { class: "muted", style: "font-size:13px", text: "This QR always opens this node's most recently locked trip, so it can be printed once and used for every future trip." }));
       const p = sh.published;
-      if (!p) body.push(CLOUD ? h("p", { class: "muted", style: "font-size:13px", text: "This trip goes onto the verification site automatically within about 10 minutes." })
+      if (!p) body.push(CLOUD ? h("p", { class: "muted", style: "font-size:13px", text: "This trip appears on the buyer page automatically after its first Polygon anchor. Until then the QR shows the previous locked trip." })
         : h("p", { class: "muted", style: "font-size:13px" }, "This trip isn't on the verification site yet. Run ",
           h("code", { class: "mono", text: "python3 saakshi_relay.py --publish" }), " and upload saakshi_site to Netlify."));
       else if (p.count < v.integrity.records) body.push(h("p", { class: "muted", style: "font-size:13px" },
-        `The buyer page has ${p.count.toLocaleString("en-IN")} of ${v.integrity.records.toLocaleString("en-IN")} records (updated ${when(p.published)}). `,
-        CLOUD ? "The newest are added automatically every 10 minutes and after each anchor." : h("span", {}, "Run ", h("code", { class: "mono", text: "--publish" }), " again to include the newest.")));
+        `The buyer page has the ${p.count.toLocaleString("en-IN")} records locked on Polygon (of ${v.integrity.records.toLocaleString("en-IN")}). `,
+        CLOUD ? "Newer ones join automatically after the next anchor." : h("span", {}, "Run ", h("code", { class: "mono", text: "--publish" }), " again to include the newest.")));
       else body.push(h("p", { class: "muted", style: "font-size:13px", text: `All ${p.count.toLocaleString("en-IN")} records are on the site (published ${when(p.published)}).` }));
       if (sh.local) body.push(h("p", { class: "muted", style: "font-size:13px" }, "This link points to this Mac. After putting the site on Netlify, run ",
         h("code", { class: "mono", text: "--publish --site-url https://<your-site>.netlify.app" }), " once."));

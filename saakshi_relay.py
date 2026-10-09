@@ -718,6 +718,19 @@ def run_publish(args, nk, cfg, rpc):
         rows, covered = checked(path, nk.pub)        # refuses (Bad) if anything is wrong
         if not rows:
             continue
+        # The buyer page shows only what is locked on Polygon, so every scan reads "Genuine record".
+        # Newer records join it after the next anchor; a trip with no anchor yet isn't shown at all.
+        mine = [x for x in posted if x.get("chain") == chain]
+        by_hash = {r.hash.hex(): i for i, r in enumerate(rows)}
+        locked = [(by_hash[x["hash"]], x) for x in mine if x.get("hash") in by_hash]
+        fname = f"{nk.node}_{chain}.json"
+        if not locked:
+            index["nodes"][nk.node] = [e for e in index["nodes"].get(nk.node, []) if e["chain"] != chain]
+            (data_dir / fname).unlink(missing_ok=True)
+            say(f"○ chain {chain}: nothing anchored on Polygon yet - not on the buyer page until it is")
+            continue
+        last_i, last_post = max(locked, key=lambda z: z[0])
+        rows = rows[:last_i + 1]
         aad = f"{nk.node}|{chain}|{rows[0].seq}|{len(rows)}"
         iv = os.urandom(12)
         bundle = {
@@ -733,21 +746,22 @@ def run_publish(args, nk, cfg, rpc):
                          "rpc": [rpc] + [u for u in PUBLIC_RPCS if u != rpc]},
             "range": rng,
             "anchors": [{"seq": p["seq"], "hash": p["hash"], "tx": p["tx"]} for p in posted if p["chain"] == chain],
-            "published": int(time.time()),
+            # when this trip was last locked: also how the page picks "the latest trip" for a QR without a trip
+            "published": int(last_post.get("time") or time.time()),
         }
-        fname = f"{nk.node}_{chain}.json"
         (data_dir / fname).write_text(json.dumps(bundle, separators=(",", ":")), encoding="utf-8")
         lst = [e for e in index["nodes"].get(nk.node, []) if e["chain"] != chain]
         lst.append({"chain": chain, "file": f"data/{fname}", "count": len(rows),
                     "firstSeq": rows[0].seq, "published": bundle["published"]})
         index["nodes"][nk.node] = lst
-        say(f"✓ chain {chain}: {len(rows)} records checked, encrypted and written to {data_dir / fname}")
+        say(f"✓ chain {chain}: {len(rows)} records (all locked on Polygon, up to seq {rows[-1].seq}) checked, "
+            f"encrypted and written to {data_dir / fname}")
     (data_dir / "index.json").write_text(json.dumps(index, indent=1), encoding="utf-8")
 
     base = cfg.get("site_url", "http://localhost:8000")
     url = f"{base}/verify/?n={nk.node}#k={key_b64}"
     say("")
-    say("QR link for this node (the part after # is the key - it never reaches the server):")
+    say("QR link for this node - always opens its most recently locked trip (the part after # is the key):")
     print("  " + url, flush=True)
     if "site_url" not in cfg:
         say("  (that is for testing on this Mac; after deploying, run once with --site-url https://yoursite.netlify.app)")
