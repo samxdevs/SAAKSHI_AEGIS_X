@@ -718,13 +718,12 @@
       });
       body.push(h("div", { class: "qr" }, img, fallback, h("div", { class: "link", text: sh.url }), copy));
       const p = sh.published;
-      if (!p) body.push(h("p", { class: "muted", style: "font-size:13px" }, "This trip isn't on the verification site yet. Run ",
-        h("code", { class: "mono", text: "python3 saakshi_relay.py --publish" }),
-        CLOUD ? " on the Mac, then " : " and upload saakshi_site to Netlify.",
-        CLOUD ? h("code", { class: "mono", text: "bash saakshi_cloud/deploy.sh" }) : null, CLOUD ? "." : null));
+      if (!p) body.push(CLOUD ? h("p", { class: "muted", style: "font-size:13px", text: "This trip goes onto the verification site automatically within about 10 minutes." })
+        : h("p", { class: "muted", style: "font-size:13px" }, "This trip isn't on the verification site yet. Run ",
+          h("code", { class: "mono", text: "python3 saakshi_relay.py --publish" }), " and upload saakshi_site to Netlify."));
       else if (p.count < v.integrity.records) body.push(h("p", { class: "muted", style: "font-size:13px" },
-        `The site has ${p.count.toLocaleString("en-IN")} of ${v.integrity.records.toLocaleString("en-IN")} records (published ${when(p.published)}). Run `,
-        h("code", { class: "mono", text: "--publish" }), " again to include the newest."));
+        `The buyer page has ${p.count.toLocaleString("en-IN")} of ${v.integrity.records.toLocaleString("en-IN")} records (updated ${when(p.published)}). `,
+        CLOUD ? "The newest are added automatically every 10 minutes and after each anchor." : h("span", {}, "Run ", h("code", { class: "mono", text: "--publish" }), " again to include the newest.")));
       else body.push(h("p", { class: "muted", style: "font-size:13px", text: `All ${p.count.toLocaleString("en-IN")} records are on the site (published ${when(p.published)}).` }));
       if (sh.local) body.push(h("p", { class: "muted", style: "font-size:13px" }, "This link points to this Mac. After putting the site on Netlify, run ",
         h("code", { class: "mono", text: "--publish --site-url https://<your-site>.netlify.app" }), " once."));
