@@ -2,6 +2,8 @@
 
 **Team AEGIS_X · Smart India Hackathon 2026 · PS 26232 (MoFPI, Hardware): Low-Cost IoT Blockchain Nodes for Farm-to-Fork Traceability**
 
+**▶ Live dashboard (no login needed): https://saakshi-aegisx.netlify.app/app**
+
 A sealed box rides with the produce. It measures the conditions every 10 seconds, signs every reading inside a
 security chip, and locks the history on the Polygon blockchain, so a buyer can check the whole journey on their
 own phone, without trusting us.
