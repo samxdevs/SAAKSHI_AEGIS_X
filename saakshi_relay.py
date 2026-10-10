@@ -523,7 +523,7 @@ def run_sigtest(args, nk, pg, through_contract):
         say("✓ the chain checks your ATECC608B signatures correctly"
             + ("" if through_contract else " - safe to deploy SaakshiRegistry.sol"))
         return True
-    say("✗ test failed - do not rely on the contract yet; send this output to Claude")
+    say("✗ test failed - do not rely on the contract yet; check the contract address and RPC")
     return False
 
 
@@ -659,7 +659,7 @@ def run_fake(args, nk, pg):
     say(f"forging chain {chain} seq {rec.seq}: temperature changed to 2.000 °C, old signature kept")
     try:
         fn.estimate_gas({"from": pg.acct.address if pg.acct else "0x000000000000000000000000000000000000dEaD"})
-        say("✗ the contract would ACCEPT it - something is wrong, send this to Claude")
+        say("✗ the contract would ACCEPT it - something is wrong: do not use this contract")
     except Exception as e:
         say(f"✓ contract refused it: {why(e)}")
 
@@ -782,7 +782,7 @@ def run_deploy(args, rpc, cfg):
         sys.exit(f"{src_path.name} not found next to this script.")
     src = src_path.read_text(encoding="utf-8")
     if "_store(" not in src:
-        sys.exit(f"{src_path.name} is the OLD version (no _store). Download the newest one from Claude.")
+        sys.exit(f"{src_path.name} is the OLD version (no _store). Use the current smart_contract/SaakshiRegistry.sol.")
     try:
         import solcx
     except ImportError:

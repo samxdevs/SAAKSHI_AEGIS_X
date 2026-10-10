@@ -90,7 +90,7 @@ static void checkAtecc() {
   bool locked = ECCX08.locked();
   Serial.printf("set up (locked):        %s\n", locked ? "YES" : "NO - this chip has never been set up");
   if (!locked) {
-    Serial.println("\n=> a fresh chip (probably the spare). Don't set it up yet - tell Claude first.");
+    Serial.println("\n=> a fresh chip (probably the spare). Don't set it up yet: setting up locks the chip permanently.");
     return;
   }
 
@@ -112,7 +112,7 @@ static void checkAtecc() {
   if (strcmp(node, ORIGINAL_NODE) == 0)
     Serial.println("\n=> this is your ORIGINAL chip - same identity as before, registered on Polygon. Good.");
   else
-    Serial.println("\n=> a set-up chip, but NOT the original SAAKSHI-25D8016E. Send this output to Claude.");
+    Serial.println("\n=> a set-up chip, but NOT the original SAAKSHI-25D8016E. Register this new node before using it.");
 }
 
 void loop() {}
