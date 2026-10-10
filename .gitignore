@@ -30,3 +30,7 @@ saakshi_cloud/config.json
 saakshi_logs/
 **/secrets.h
 **/broker_ca.h
+
+# internal handover notes: kept on the Mac, not in the public repo
+CLAUDE.md
+docs/
