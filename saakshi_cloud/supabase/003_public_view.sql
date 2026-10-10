@@ -60,9 +60,9 @@ revoke execute on function public.public_org(), public.public_overview(), public
 grant execute on function public.public_overview(), public.public_trip(text, text), public.public_pulse() to anon, authenticated;
 grant execute on function public.set_public_view(boolean), public.public_view_on() to authenticated;
 
--- switch it on for samxdevs@gmail.com's organisation
+-- switch it on for your organisation: put its admin's email below
 update public.orgs set public_view = true
 where id = (select om.org_id from public.org_members om join auth.users u on u.id = om.user_id
-            where u.email = 'samxdevs@gmail.com');
+            where u.email = 'your-admin@example.com');
 
 select name, public_view from public.orgs where public_view;

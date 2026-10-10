@@ -10,9 +10,9 @@ saakshi_dashboard_data/
 
 # --- data (real records; keep backups, but not in git) ---
 saakshi_ledger/
-saakshi_site/verify/data/*.json
+buyer_verification_page/data/*.json
 
-# --- test environments made by tools/make_demo_ledger.py ---
+# --- test environments made by dev_tools/make_demo_ledger.py ---
 demo_*/
 
 # --- junk ---

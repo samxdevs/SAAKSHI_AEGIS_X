@@ -730,7 +730,7 @@
       const p = sh.published;
       if (!p) body.push(CLOUD ? h("p", { class: "muted", style: "font-size:13px", text: "This trip appears on the buyer page automatically after its first Polygon anchor. Until then the QR shows the previous locked trip." })
         : h("p", { class: "muted", style: "font-size:13px" }, "This trip isn't on the verification site yet. Run ",
-          h("code", { class: "mono", text: "python3 saakshi_relay.py --publish" }), " and upload saakshi_site to Netlify."));
+          h("code", { class: "mono", text: "python3 saakshi_relay.py --publish" }), " and deploy the site."));
       else if (p.count < v.integrity.records) body.push(h("p", { class: "muted", style: "font-size:13px" },
         `The buyer page has the ${p.count.toLocaleString("en-IN")} records locked on Polygon (of ${v.integrity.records.toLocaleString("en-IN")}). `,
         CLOUD ? "Newer ones join automatically after the next anchor." : h("span", {}, "Run ", h("code", { class: "mono", text: "--publish" }), " again to include the newest.")));

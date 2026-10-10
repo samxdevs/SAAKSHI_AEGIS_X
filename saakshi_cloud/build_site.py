@@ -4,7 +4,7 @@ Build the online SAAKSHI site (Netlify) into saakshi_cloud/site_build/:
 
   /            landing page + "Request nodes" form      (saakshi_dashboard_web/index.html)
   /app         the dashboard, reading from Supabase     (saakshi_dashboard_web/app.* + web/cloud.js)
-  /verify/     the buyer page and its encrypted bundles (saakshi_site/verify/, after relay --publish)
+  /verify/     the buyer page and its encrypted bundles (buyer_verification_page/, after relay --publish)
 
 The dashboard files are shared with the Mac dashboard; the build only adds the Supabase pieces.
 Run:  python3 saakshi_cloud/build_site.py      then deploy with  saakshi_cloud/deploy.sh
@@ -69,7 +69,7 @@ def main():
                      [cfg, '<script src="/static/cloud.js"></script>'])
     (OUT / "index.html").write_text(landing)
 
-    verify = ROOT / "saakshi_site" / "verify"
+    verify = ROOT / "buyer_verification_page"
     shutil.copytree(verify, OUT / "verify", ignore=shutil.ignore_patterns("README.txt", ".DS_Store"))
     bundles = sorted(p.name for p in (OUT / "verify" / "data").glob("SAAKSHI-*.json"))
 

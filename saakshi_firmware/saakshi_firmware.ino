@@ -1,5 +1,5 @@
 /*
- * SAAKSHI - node v8: v7.1 + ethylene (Winsen ME3-C2H4 through MCP6002 + ADS1115 at 0x48)
+ * SAAKSHI firmware (node v8): v7.1 + ethylene (Winsen ME3-C2H4 through MCP6002 + ADS1115 at 0x48)
  *
  * New in v8 (the signed record keeps its 174-byte shape, so the ledger, relay, contract and every
  * anchored record stay valid):

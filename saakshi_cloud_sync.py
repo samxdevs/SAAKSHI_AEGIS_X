@@ -219,7 +219,7 @@ def main():
     ap.add_argument("--every", type=float, default=10, help="seconds between syncs (default 10, like the board)")
     ap.add_argument("--ledger", default=str(HERE / "saakshi_ledger"))
     ap.add_argument("--relay", default=str(HERE / "saakshi_relay"))
-    ap.add_argument("--site", default=str(HERE / "saakshi_site"))
+    ap.add_argument("--site", default=str(HERE / "buyer_verification_page"))
     ap.add_argument("--keys", default=str(HERE), help="folder with saakshi_pubkey*.txt")
     args = ap.parse_args()
 

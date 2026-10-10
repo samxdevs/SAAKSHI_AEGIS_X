@@ -19,7 +19,7 @@ import time
 HERE = Path(__file__).resolve().parent
 LEDGER = HERE / "saakshi_ledger"
 POSTED = HERE / "saakshi_relay" / "posted.json"
-DATA = HERE / "saakshi_site" / "verify" / "data"
+DATA = HERE / "buyer_verification_page" / "data"
 
 
 def say(msg):

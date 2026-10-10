@@ -38,21 +38,22 @@ bit of a signature (rejected on-chain).
 **Proof on-chain:** 2,127 records of our first trip locked at block 49371015; today's trips are anchored automatically
 (for example block 49658554), all verifiable on PolygonScan.
 
-## What's in this repository
+## Find your way around
 
-| Path | What it is |
-|---|---|
-| `saakshi_node_v8/` | ESP32-S3 firmware: sensors, ATECC608B signing, hash chain, flash storage, encrypted MQTT sync |
-| `SaakshiRegistry.sol` | Smart contract (deployed): registers nodes, verifies chip signatures on-chain, stores anchors |
-| `saakshi_ledger.py` | Receives records over MQTT and keeps only verified ones |
-| `saakshi_relay.py` | Anchors the newest signed record on Polygon; publishes encrypted trips for the buyer page |
-| `saakshi_broker.py` | Sets up the encrypted Mosquitto broker (own CA, per-node logins, access rules) |
-| `saakshi_start.sh` | Starts broker, ledger, relay, website sync and buyer-page publisher with one command |
-| `saakshi_cloud_sync.py`, `saakshi_cloud/` | The online dashboard: Supabase (row-level security) + Netlify |
-| `saakshi_dashboard.py`, `saakshi_dashboard_web/` | The same dashboard, run locally on the Mac |
-| `saakshi_site/verify/` | The buyer verification page (runs entirely in the browser, WebCrypto) |
-| `sketches/` | Read-only hardware check sketches (I2C, ATECC608, MPU-6050) |
-| `tools/make_demo_ledger.py` | Builds a **simulated** test ledger for development without hardware |
+| | Folder / file | What it is |
+|---|---|---|
+| 🔩 **Device** | [`saakshi_firmware/`](saakshi_firmware) | ESP32-S3 firmware: sensors, ATECC608B signing, hash chain, flash storage, encrypted MQTT sync, ethylene (ready) |
+| | [`hardware_tests/`](hardware_tests) | Read-only test sketches for the security chip, I2C bus and motion sensor |
+| ⛓️ **Blockchain** | [`smart_contract/SaakshiRegistry.sol`](smart_contract/SaakshiRegistry.sol) | Deployed contract: registers nodes, **verifies chip signatures on-chain**, stores anchors |
+| | [`saakshi_relay.py`](saakshi_relay.py) | Anchors the newest signed record on Polygon automatically; publishes encrypted trips for buyers |
+| 🔐 **Verification** | [`saakshi_ledger.py`](saakshi_ledger.py) | Receives records over MQTT and keeps only those whose hash, chain link and chip signature check out |
+| | [`saakshi_pull.py`](saakshi_pull.py) | Record format and signature checks shared by the tools |
+| 📡 **Network** | [`saakshi_broker.py`](saakshi_broker.py) | Sets up the encrypted MQTT broker: own certificate authority, one login per node, access rules |
+| 📊 **Dashboard** | [`saakshi_cloud/`](saakshi_cloud), [`saakshi_cloud_sync.py`](saakshi_cloud_sync.py) | Online dashboard: Supabase (row-level security) + Netlify; the sync pushes only verified data |
+| | [`saakshi_dashboard_web/`](saakshi_dashboard_web), [`saakshi_dashboard.py`](saakshi_dashboard.py) | Dashboard pages and logic (the online site is built from these; also runs locally) |
+| 📱 **Buyer** | [`buyer_verification_page/`](buyer_verification_page) | QR page: decrypts the trip and re-checks every record and the Polygon anchor in the phone's browser |
+| ▶️ **Run** | [`saakshi_start.sh`](saakshi_start.sh), [`saakshi_autopublish.py`](saakshi_autopublish.py) | One command starts broker, ledger, relay, dashboard sync and buyer-page publisher |
+| 🧪 **Dev** | [`dev_tools/make_demo_ledger.py`](dev_tools/make_demo_ledger.py) | Builds a **simulated** test ledger for development without hardware |
 
 ## Honest status
 
@@ -62,3 +63,5 @@ bit of a signature (rejected on-chain).
 | 🔜 Being integrated | Ethylene (Winsen ME3-C2H4, firmware ready, sensor being fitted and calibrated) · lid-open switch · 4G modem with WiFi fallback · GPS · solar charging |
 
 Polygon **Amoy is a testnet**; a production deployment would use Polygon mainnet.
+
+Released under the [MIT License](LICENSE).

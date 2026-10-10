@@ -577,7 +577,7 @@ class Store:
     def share(self, node, chain):
         keys = load_json(self.relay / "view_keys.json", {})
         site = load_json(self.relay / "config.json", {}).get("site_url", "http://localhost:8000").rstrip("/")
-        idx = load_json(self.site / "verify" / "data" / "index.json", {}).get("nodes", {}).get(node, [])
+        idx = load_json(self.site / "data" / "index.json", {}).get("nodes", {}).get(node, [])
         pub = next((e for e in idx if e.get("chain") == chain), None)
         if node not in keys:
             return {"url": None, "published": pub, "hint": "Run  python3 saakshi_relay.py --publish  to make the buyer QR."}
@@ -944,7 +944,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.fail(404, "not found")
 
     def send_site(self, raw):
-        """The static buyer page from saakshi_site/verify/. It checks everything in the buyer's browser."""
+        """The static buyer page from buyer_verification_page/. It checks everything in the buyer's browser."""
         if raw == "/verify":                                       # keep its relative links (core.js, data/) working
             q = urllib.parse.urlsplit(self.path).query
             self.send_response(301)
@@ -952,7 +952,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        root = (self.store.site / "verify").resolve()
+        root = self.store.site.resolve()
         rel = urllib.parse.unquote(raw)[len("/verify/"):] or "index.html"
         target = (root / rel).resolve()
         if root not in target.parents or not target.is_file():
@@ -1140,7 +1140,7 @@ def main():
     ap.add_argument("--lan", action="store_true", help="let phones on the same WiFi open it")
     ap.add_argument("--ledger", type=Path, default=HERE / "saakshi_ledger")
     ap.add_argument("--relay", type=Path, default=HERE / "saakshi_relay")
-    ap.add_argument("--site", type=Path, default=HERE / "saakshi_site")
+    ap.add_argument("--site", type=Path, default=HERE / "buyer_verification_page")
     ap.add_argument("--data", type=Path, default=HERE / "saakshi_dashboard_data")
     ap.add_argument("--keys", type=Path, default=HERE, help="folder with saakshi_pubkey*.txt (default: next to this script)")
     ap.add_argument("--offline", action="store_true", help="don't contact Polygon")

@@ -690,10 +690,10 @@ def run_publish(args, nk, cfg, rpc):
     if "contract" not in cfg:
         sys.exit("No contract address yet - deploy SaakshiRegistry first.")
     site = args.site
-    page = site / "verify" / "index.html"
+    page = site / "index.html"
     if not page.exists():
-        say(f"note: {page} not found - unzip saakshi_site.zip here so the page files are in place")
-    data_dir = site / "verify" / "data"
+        say(f"note: {page} not found - the buyer page files (buyer_verification_page/) are missing")
+    data_dir = site / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     rng = None
     if args.range:
@@ -777,7 +777,7 @@ def run_publish(args, nk, cfg, rpc):
 
 def run_deploy(args, rpc, cfg):
     """Compile SaakshiRegistry.sol on this Mac (solc 0.8.24, EVM paris) and deploy it to Amoy."""
-    src_path = HERE / "SaakshiRegistry.sol"
+    src_path = HERE / "smart_contract" / "SaakshiRegistry.sol"
     if not src_path.exists():
         sys.exit(f"{src_path.name} not found next to this script.")
     src = src_path.read_text(encoding="utf-8")
@@ -836,7 +836,7 @@ def main():
     ap.add_argument("--fake", action="store_true", help="demo: try to post a forged head (free)")
     ap.add_argument("--deploy", action="store_true", help="compile + deploy SaakshiRegistry.sol from this Mac")
     ap.add_argument("--publish", action="store_true", help="write encrypted records for the verification page")
-    ap.add_argument("--site", type=Path, default=HERE / "saakshi_site", help="with --publish: the site folder")
+    ap.add_argument("--site", type=Path, default=HERE / "buyer_verification_page", help="with --publish: the buyer page folder")
     ap.add_argument("--site-url", help="with --publish: the deployed site, e.g. https://saakshi.netlify.app")
     ap.add_argument("--range", help="with --publish: allowed temperature band in °C, e.g. 2,8")
     ap.add_argument("--contract", help="SaakshiRegistry address (saved for next time)")

@@ -3,8 +3,8 @@
 make_demo_ledger.py - builds a realistic TEST ledger in firmware v7's exact record format, so the dashboard,
 relay checks and buyer page can be developed without the board.
 
-    python3 tools/make_demo_ledger.py demo_env          # writes everything into ./demo_env/
-    cd demo_env && python3 ../saakshi_dashboard.py --offline --keys . --ledger saakshi_ledger --relay saakshi_relay --site saakshi_site --data dash_data
+    python3 dev_tools/make_demo_ledger.py demo_env          # writes everything into ./demo_env/
+    cd demo_env && python3 ../saakshi_dashboard.py --offline --keys . --ledger saakshi_ledger --relay saakshi_relay --site buyer_verification_page --data dash_data
 
 What it makes (all SIMULATED - never mix it with the real ledger, never anchor it on Polygon):
   node A: a 30 h chilled trip (2-8 C) with a ~2 h excursion, 3 jolts while loading, a run of 7 unsigned
